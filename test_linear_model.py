@@ -204,4 +204,5 @@ def get_suite():
     return suites
 
 if __name__ == "__main__":
-    ReferenceTestCase.main()
+    asd = ReferenceTestCase.main()
+    print("asd ",asd)

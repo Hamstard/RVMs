@@ -177,7 +177,7 @@ class RVMTestCase(unittest.TestCase):
         base_trafo = trafo.fit_transform
         
         model_type = RelevanceVectorMachine
-        model_kwargs = dict(n_iter=250,verbose=False,compute_score=True,init_beta=init_beta,
+        model_kwargs = dict(n_iter=50,verbose=False,compute_score=True,init_beta=init_beta,
                             init_alphas=init_alphas)
         
         runtimes, coefs = repeated_regression(x,base_trafo,model_type,t=None,tfun=tfun,epsilon=epsilon,
@@ -205,7 +205,7 @@ class RVMTestCase(unittest.TestCase):
                 base_trafo = trafo.fit_transform
                 
                 model_type = RelevanceVectorMachine
-                model_kwargs = dict(n_iter=250,verbose=False,compute_score=True,init_beta=init_beta,
+                model_kwargs = dict(n_iter=50,verbose=False,compute_score=True,init_beta=init_beta,
                                     init_alphas=init_alphas)
 
                 runtimes, coefs = repeated_regression(x,base_trafo,model_type,t=None,tfun=tfun,epsilon=epsilon,

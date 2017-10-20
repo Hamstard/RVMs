@@ -88,29 +88,19 @@ class DesignMatrixTestCase(ReferenceTestCase):
         trafo = FourierFeatures(k=k)
         X = trafo.fit_transform(x.reshape((-1,1)))
 
-        fname = "tmp_fourier.csv"
-        # np.savetxt(fname,X)
-        # self.assertCSVFileCorrect(fname,reference_data_dir+'/fourier.csv')
         df = pd.DataFrame(data=X)
         df.columns = [str(v) for v in df.columns]
-        # df.to_csv(fname)
         self.assertDataFrameCorrect(df,reference_data_dir+'/fourier.csv')
-        # os.remove(fname)
 
     def test_Gauss_design_matrix_setup(self):
         """Gauss design matrix.
         """
         trafo = GaussianFeatures(k=k,mu0=0,dmu=.25,scale=1.)
         X = trafo.fit_transform(x.reshape((-1,1)))
-
-        fname = "tmp_gauss.csv"
-        # np.savetxt(fname,X)
-        # self.assertCSVFileCorrect(fname,reference_data_dir+'/gauss.csv')
+        
         df = pd.DataFrame(data=X)
         df.columns = [str(v) for v in df.columns]
-        # df.to_csv(fname)
         self.assertDataFrameCorrect(df,reference_data_dir+'/gauss.csv')
-        # os.remove(fname)
 
     def test_Chebyshev_design_matrix_setup(self):
         """Chebyshev design matrix.
@@ -118,13 +108,8 @@ class DesignMatrixTestCase(ReferenceTestCase):
         trafo = ChebyshevFeatures(k=k)
         X = trafo.fit_transform(x.reshape((-1,1)))
 
-        fname = "tmp_chebyshev.csv"
-        # np.savetxt(fname,X)
-        # self.assertCSVFileCorrect(fname,reference_data_dir+'/chebyshev.csv')
-        # os.remove(fname)
         df = pd.DataFrame(data=X)
         df.columns = [str(v) for v in df.columns]
-        # df.to_csv(fname)
         self.assertDataFrameCorrect(df,reference_data_dir+'/chebyshev.csv')
 
 class RVMTestCase(unittest.TestCase):
@@ -224,4 +209,4 @@ def get_suite():
     return suites
 
 if __name__ == "__main__":
-    asd = ReferenceTestCase.main()
+    ReferenceTestCase.main()

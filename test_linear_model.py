@@ -139,16 +139,16 @@ class RVMTestCase(unittest.TestCase):
         trafo = FourierFeatures(k=k)
         self.X = trafo.fit_transform(x.reshape((-1,1)))
 
-    # def test_manual_hyperparameters(self):
+    def test_manual_hyperparameters(self):
         
-    #     init_beta = 1./ np.var(t) # (that's the default start)
-    #     init_alphas = np.ones(self.X.shape[1])
-    #     init_alphas[1:] = np.inf
+        init_beta = 1./ np.var(t) # (that's the default start)
+        init_alphas = np.ones(self.X.shape[1])
+        init_alphas[1:] = np.inf
         
-    #     model = RelevanceVectorMachine(n_iter=50,verbose=False,compute_score=True,init_beta=init_beta,
-    #                            init_alphas=init_alphas)
-    #     model.fit(self.X,t)
-    #     y, yerr = model.predict(self.X,return_std=True)
+        model = RelevanceVectorMachine(n_iter=50,verbose=False,compute_score=True,init_beta=init_beta,
+                               init_alphas=init_alphas)
+        model.fit(self.X,t)
+        y, yerr = model.predict(self.X,return_std=True)
 
     # def test_semimanual_hyperparameters(self):
         

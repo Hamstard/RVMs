@@ -1,3 +1,4 @@
 scikit-learn>=0.19.0
 numpy
 tdda>=0.4.1
+scipy

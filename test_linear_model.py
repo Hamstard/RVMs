@@ -39,8 +39,10 @@ tfun = lambda x: np.sin(x) + np.cos(2.*x)
 # identify platform
 if os.name == "posix":
     win = False
+    print("Posix")
 else:
     win = True
+    print("Windows")
 
 # current directory of this script
 curr_dir = os.path.abspath(os.path.dirname(__file__))
@@ -51,6 +53,8 @@ if win:
 reference_data_dir = curr_dir+"/reference/"
 if win:
     reference_data_dir = reference_data_dir.replace("\\","/")
+print("curr_dir ",curr_dir)
+print("reference_data_dir ",reference_data_dir)
 
 class DesignMatrixTestCase(ReferenceTestCase):
     """Tests the setup of various design matrices.

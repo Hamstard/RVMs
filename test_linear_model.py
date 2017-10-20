@@ -150,16 +150,16 @@ class RVMTestCase(unittest.TestCase):
         model.fit(self.X,t)
         y, yerr = model.predict(self.X,return_std=True)
 
-    # def test_semimanual_hyperparameters(self):
+    def test_semimanual_hyperparameters(self):
         
-    #     np.random.seed(seed)
-    #     init_beta = stats.halfnorm(scale=1).rvs(size=1)[0]
-    #     init_alphas = stats.halfnorm(scale=1).rvs(size=self.X.shape[1])
+        np.random.seed(seed)
+        init_beta = stats.halfnorm(scale=1).rvs(size=1)[0]
+        init_alphas = stats.halfnorm(scale=1).rvs(size=self.X.shape[1])
         
-    #     model = RelevanceVectorMachine(n_iter=50,verbose=False,compute_score=True,init_beta=init_beta,
-    #                            init_alphas=init_alphas)
-    #     model.fit(self.X,t)
-    #     y, yerr = model.predict(self.X,return_std=True)
+        model = RelevanceVectorMachine(n_iter=50,verbose=False,compute_score=True,init_beta=init_beta,
+                               init_alphas=init_alphas)
+        model.fit(self.X,t)
+        y, yerr = model.predict(self.X,return_std=True)
 
     # def test_random_hyperparameters(self):
     #     np.random.seed(seed)

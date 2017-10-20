@@ -69,18 +69,10 @@ class DesignMatrixTestCase(ReferenceTestCase):
         """
         trafo = preprocessing.PolynomialFeatures(k)
         X = trafo.fit_transform(x.reshape((-1,1)))
-
-        fname = "tmp_polynomial.csv"
-        #np.savetxt(fname,X)
-        #self.assertCSVFileCorrect(fname,reference_data_dir+'/polynomial.csv')
+        
         df = pd.DataFrame(data=X)
         df.columns = [str(v) for v in df.columns]
-        
-        # df.to_csv(fname)
-        # columns = self.all_fields_except(['random'])
         self.assertDataFrameCorrect(df,reference_data_dir+'/polynomial.csv',)
-        
-        # os.remove(fname)
     
     def test_Fourier_design_matrix_setup(self):
         """Fourier design matrix.

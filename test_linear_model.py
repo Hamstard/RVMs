@@ -220,10 +220,9 @@ class RVMTestCase(unittest.TestCase):
 
 def get_suite():
     loader = unittest.TestLoader()
-    suites = [loader.loadTestsFromTestCase(DesignMatrixTestCase),]
-    #          loader.loadTestsFromTestCase(RVMTestCase)]
+    suites = [loader.loadTestsFromTestCase(DesignMatrixTestCase),
+              loader.loadTestsFromTestCase(RVMTestCase)]
     return suites
 
 if __name__ == "__main__":
     asd = ReferenceTestCase.main()
-    print("asd ",asd)

@@ -182,40 +182,40 @@ class RVMTestCase(unittest.TestCase):
         
         runtimes, coefs = repeated_regression(x,base_trafo,model_type,t=None,tfun=tfun,epsilon=epsilon,
                                             model_kwargs=model_kwargs,Nruns=Nruns,return_coefs=True)
-        print_run_stats(base_trafo,x,runtimes,coefs,Nruns)
+        print_run_stats(base_trafo,x,runtimes,coefs,Nruns,show_coefs=False)
         
-    # def test_multiple_basis_and_training_set_sizes(self):
-    #     np.random.seed(seed)
-    #     Ns = [50, 100, 500] # triaing set sizes
-    #     Ms = [5, 10, 20] # basis set size
+    def test_multiple_basis_and_training_set_sizes(self):
+        np.random.seed(seed)
+        Ns = [50, 100,] # triaing set sizes
+        Ms = [5, 10,] # basis set size
 
-    #     epsilon = stats.norm(loc=0,scale=0.01)
-    #     tfun = lambda x: np.sin(x) + np.cos(2.*x)
+        epsilon = stats.norm(loc=0,scale=0.01)
+        tfun = lambda x: np.sin(x) + np.cos(2.*x)
 
-    #     init_beta = distribution_wrapper(stats.halfnorm(scale=1),size=1,single=True)
-    #     init_alphas = distribution_wrapper(stats.halfnorm(scale=1),single=False)
+        init_beta = distribution_wrapper(stats.halfnorm(scale=1),size=1,single=True)
+        init_alphas = distribution_wrapper(stats.halfnorm(scale=1),single=False)
 
-    #     for N in Ns:
-    #         t_est, t_err = [], []
-    #         for M in Ms:
-    #             x = np.linspace(0,1,N)
-    #             k = M
+        for N in Ns:
+            t_est, t_err = [], []
+            for M in Ms:
+                x = np.linspace(0,1,N)
+                k = M
                 
-    #             trafo = FourierFeatures(k=k)
-    #             base_trafo = trafo.fit_transform
+                trafo = FourierFeatures(k=k)
+                base_trafo = trafo.fit_transform
                 
-    #             model_type = RelevanceVectorMachine
-    #             model_kwargs = dict(n_iter=250,verbose=False,compute_score=True,init_beta=init_beta,
-    #                                 init_alphas=init_alphas)
+                model_type = RelevanceVectorMachine
+                model_kwargs = dict(n_iter=250,verbose=False,compute_score=True,init_beta=init_beta,
+                                    init_alphas=init_alphas)
 
-    #             runtimes, coefs = repeated_regression(x,base_trafo,model_type,t=None,tfun=tfun,epsilon=epsilon,
-    #                                                 model_kwargs=model_kwargs,Nruns=Nruns,return_coefs=True)
-    #             #print_run_stats(base_trafo,x,runtimes,coefs,Nruns)
-    #             t_est.append(runtimes.mean())
-    #             t_err.append(runtimes.std(ddof=1)*2)
-    #         print("\ntime for N = {}:".format(N))
-    #         for est, err in zip(t_est,t_err):
-    #             print("    estimate = {:.4f}s, 2*std = {:.4f}s".format(est,2*err))
+                runtimes, coefs = repeated_regression(x,base_trafo,model_type,t=None,tfun=tfun,epsilon=epsilon,
+                                                    model_kwargs=model_kwargs,Nruns=Nruns,return_coefs=True)
+                #print_run_stats(base_trafo,x,runtimes,coefs,Nruns)
+                t_est.append(runtimes.mean())
+                t_err.append(runtimes.std(ddof=1)*2)
+            print("\ntime for N = {}:".format(N))
+            for est, err in zip(t_est,t_err):
+                print("    estimate = {:.4f}s, 2*std = {:.4f}s".format(est,2*err))
 
 def get_suite():
     loader = unittest.TestLoader()

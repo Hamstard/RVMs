@@ -667,7 +667,7 @@ def distribution_wrapper(dis,size=None,single=True):
     return samples
 
 def repeated_regression(x,base_trafo,model_type,model_kwargs,t=None,tfun=None,
-        epsilon=None,Nruns=100,return_coefs=False,return_models=False):
+        epsilon=None,Nruns=100,return_coefs=False,return_models=False,):
     """Repeats regressions.
 
     This can be used to do multiple regressions on freshly regenerated 
@@ -686,14 +686,14 @@ def repeated_regression(x,base_trafo,model_type,model_kwargs,t=None,tfun=None,
         for example the sklearn.preprocessing function such as PolynomialFeatures
         to transform x into X
     model : instance of regression class like RelevanceVectorMachine
-
+    
     Example
     -------
     >>> model_type = linear_model.RelevanceVectorMachine
     >>> model_kwargs = dict(n_iter=250,verbose=False,compute_score=True,init_beta=init_beta,
                        init_alphas=init_alphas,fit_intercept=False)
     >>> runtimes, coefs, models = repeated_regression(x,base_trafo,model_type,t=t,tfun=None,epsilon=None,
-    >>>                               model_kwargs=model_kwargs,Nruns=Nruns,return_coefs=True,return_models=True)
+                                   model_kwargs=model_kwargs,Nruns=Nruns,return_coefs=True,return_models=True)
     """
     
     X = base_trafo(x.reshape((-1,1)))
@@ -720,15 +720,16 @@ def repeated_regression(x,base_trafo,model_type,model_kwargs,t=None,tfun=None,
         return runtimes, models
     return runtimes
 
-def print_run_stats(base_trafo,x,runtimes,coefs,Nruns):
+def print_run_stats(base_trafo,x,runtimes,coefs,Nruns,show_coefs=True):
     print("\n================================================")
     s = "X = {} & Nruns = {}:".format(base_trafo(x.reshape((-1,1))).shape,Nruns)
     print(s)
     print("-"*len(s))
     print("\ntime: estimate = {:.4f}s, 2*std = {:.4f}s".format(runtimes.mean(),2*np.std(runtimes,ddof=1)))
-    print("\ncoefs (estimate +- 2*std):")
-    for i in range(coefs.shape[1]):
-        print("    {}: {:.4f} +- {:.4f}".format(i,coefs[:,i].mean(axis=0),2*np.std(coefs[:,i],axis=0,ddof=1)))
+    if show_coefs:
+        print("\ncoefs (estimate +- 2*std):")
+        for i in range(coefs.shape[1]):
+            print("    {}: {:.4f} +- {:.4f}".format(i,coefs[:,i].mean(axis=0),2*np.std(coefs[:,i],axis=0,ddof=1)))
 
 def plot_summary(models,noise,x,t,X,coefs,base_trafo):
 

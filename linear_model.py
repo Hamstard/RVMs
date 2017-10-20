@@ -4,7 +4,7 @@ based regression plus helper functions and example.
 
 Eric Schmidt
 e.schmidt@cantab.net
-2017-10-12
+2017-10-20
 """
 
 from __future__ import print_function

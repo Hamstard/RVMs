@@ -8,7 +8,7 @@ python test_linear_model.py             # performs tests
 
 Eric Schmidt
 e.schmidt@cantab.net
-2017-10-15
+2017-10-20
 """
 from __future__ import print_function
 

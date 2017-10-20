@@ -22,7 +22,6 @@ from linear_model import fun_wrapper, dis_wrapper, cheb_wrapper, \
     FourierFeatures, GaussianFeatures, ChebyshevFeatures, RelevanceVectorMachine, \
     distribution_wrapper, repeated_regression, print_run_stats
 
-import pandas as pd
 import numpy as np
 from scipy import stats
 

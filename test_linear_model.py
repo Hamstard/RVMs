@@ -74,8 +74,12 @@ class DesignMatrixTestCase(ReferenceTestCase):
         #np.savetxt(fname,X)
         #self.assertCSVFileCorrect(fname,reference_data_dir+'/polynomial.csv')
         df = pd.DataFrame(data=X)
+        df.columns = [str(v) for v in df.columns]
+        
         # df.to_csv(fname)
-        self.assertDataFrameCorrect(df,reference_data_dir+'/polynomial.csv')
+        # columns = self.all_fields_except(['random'])
+        self.assertDataFrameCorrect(df,reference_data_dir+'/polynomial.csv',)
+        
         # os.remove(fname)
     
     def test_Fourier_design_matrix_setup(self):
@@ -88,6 +92,7 @@ class DesignMatrixTestCase(ReferenceTestCase):
         # np.savetxt(fname,X)
         # self.assertCSVFileCorrect(fname,reference_data_dir+'/fourier.csv')
         df = pd.DataFrame(data=X)
+        df.columns = [str(v) for v in df.columns]
         # df.to_csv(fname)
         self.assertDataFrameCorrect(df,reference_data_dir+'/fourier.csv')
         # os.remove(fname)
@@ -102,6 +107,7 @@ class DesignMatrixTestCase(ReferenceTestCase):
         # np.savetxt(fname,X)
         # self.assertCSVFileCorrect(fname,reference_data_dir+'/gauss.csv')
         df = pd.DataFrame(data=X)
+        df.columns = [str(v) for v in df.columns]
         # df.to_csv(fname)
         self.assertDataFrameCorrect(df,reference_data_dir+'/gauss.csv')
         # os.remove(fname)
@@ -117,6 +123,7 @@ class DesignMatrixTestCase(ReferenceTestCase):
         # self.assertCSVFileCorrect(fname,reference_data_dir+'/chebyshev.csv')
         # os.remove(fname)
         df = pd.DataFrame(data=X)
+        df.columns = [str(v) for v in df.columns]
         # df.to_csv(fname)
         self.assertDataFrameCorrect(df,reference_data_dir+'/chebyshev.csv')
 
@@ -213,8 +220,8 @@ class RVMTestCase(unittest.TestCase):
 
 def get_suite():
     loader = unittest.TestLoader()
-    suites = [loader.loadTestsFromTestCase(DesignMatrixTestCase),
-              loader.loadTestsFromTestCase(RVMTestCase)]
+    suites = [loader.loadTestsFromTestCase(DesignMatrixTestCase),]
+    #          loader.loadTestsFromTestCase(RVMTestCase)]
     return suites
 
 if __name__ == "__main__":

@@ -1,0 +1,15 @@
+Python code coverage:
+
+https://coverage.readthedocs.io/en/coverage-4.4.1/
+
+coverage run test_master.py
+coverage report -m
+
+Git and code coverage:
+http://stef.thewalter.net/git-coverage-useful-code-coverage.html
+
+Continuous integration (CI):
+https://docs.travis-ci.com/user/getting-started
+
+some python tips for travis ci:
+https://vevurka.github.io/dsp17/git/quality/django/python/travis_ci_frisor/

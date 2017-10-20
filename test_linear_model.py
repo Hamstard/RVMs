@@ -25,6 +25,8 @@ from linear_model import fun_wrapper, dis_wrapper, cheb_wrapper, \
 import numpy as np
 from scipy import stats
 
+seed = 42
+np.random.seed(seed)
 x = np.linspace(-np.pi,np.pi,100)
 x_pred = np.linspace(-np.pi,np.pi,200)
 epsilon = stats.norm(loc=0,scale=0.01)
@@ -118,7 +120,6 @@ class RVMTestCase(unittest.TestCase):
     """
 
     def setUp(self):
-        
         trafo = FourierFeatures(k=k)
         self.X = trafo.fit_transform(x.reshape((-1,1)))
 
@@ -135,6 +136,7 @@ class RVMTestCase(unittest.TestCase):
 
     def test_semimanual_hyperparameters(self):
         
+        np.random.seed(seed)
         init_beta = stats.halfnorm(scale=1).rvs(size=1)[0]
         init_alphas = stats.halfnorm(scale=1).rvs(size=self.X.shape[1])
         
@@ -144,7 +146,7 @@ class RVMTestCase(unittest.TestCase):
         y, yerr = model.predict(self.X,return_std=True)
 
     def test_random_hyperparameters(self):
-        
+        np.random.seed(seed)
         init_beta = distribution_wrapper(stats.halfnorm(scale=1),single=True)
         init_alphas = distribution_wrapper(stats.halfnorm(scale=1),single=False)
         
@@ -154,7 +156,7 @@ class RVMTestCase(unittest.TestCase):
         y, yerr = model.predict(self.X,return_std=True)
 
     def test_rerun_regressions(self):
-       
+        np.random.seed(seed)
         trafo = FourierFeatures(k=k)
         base_trafo = trafo.fit_transform
         
@@ -167,7 +169,7 @@ class RVMTestCase(unittest.TestCase):
         print_run_stats(base_trafo,x,runtimes,coefs,Nruns)
         
     def test_multiple_basis_and_training_set_sizes(self):
-
+        np.random.seed(seed)
         Ns = [50, 100, 500] # triaing set sizes
         Ms = [5, 10, 20] # basis set size
         Nruns = 5 # number of runs

@@ -23,6 +23,7 @@ from linear_model import fun_wrapper, dis_wrapper, cheb_wrapper, \
     distribution_wrapper, repeated_regression, print_run_stats
 
 import numpy as np
+import pandas as pd
 from scipy import stats
 
 seed = 42
@@ -41,10 +42,8 @@ tfun = lambda x: np.sin(x) + np.cos(2.*x)
 # identify platform
 if os.name == "posix":
     win = False
-    print("Posix moep")
 else:
     win = True
-    print("Windows")
 
 # current directory of this script
 curr_dir = os.path.abspath(os.path.dirname(__file__))
@@ -55,8 +54,6 @@ if win:
 reference_data_dir = curr_dir+"/reference/"
 if win:
     reference_data_dir = reference_data_dir.replace("\\","/")
-print("curr_dir ",curr_dir)
-print("reference_data_dir ",reference_data_dir)
 
 class DesignMatrixTestCase(ReferenceTestCase):
     """Tests the setup of various design matrices.
@@ -74,9 +71,12 @@ class DesignMatrixTestCase(ReferenceTestCase):
         X = trafo.fit_transform(x.reshape((-1,1)))
 
         fname = "tmp_polynomial.csv"
-        np.savetxt(fname,X)
-        self.assertCSVFileCorrect(fname,reference_data_dir+'/polynomial.csv')
-        os.remove(fname)
+        #np.savetxt(fname,X)
+        #self.assertCSVFileCorrect(fname,reference_data_dir+'/polynomial.csv')
+        df = pd.DataFrame(data=X)
+        # df.to_csv(fname)
+        self.assertDataFrameCorrect(df,reference_data_dir+'/polynomial.csv')
+        # os.remove(fname)
     
     def test_Fourier_design_matrix_setup(self):
         """Fourier design matrix.
@@ -85,9 +85,12 @@ class DesignMatrixTestCase(ReferenceTestCase):
         X = trafo.fit_transform(x.reshape((-1,1)))
 
         fname = "tmp_fourier.csv"
-        np.savetxt(fname,X)
-        self.assertCSVFileCorrect(fname,reference_data_dir+'/fourier.csv')
-        os.remove(fname)
+        # np.savetxt(fname,X)
+        # self.assertCSVFileCorrect(fname,reference_data_dir+'/fourier.csv')
+        df = pd.DataFrame(data=X)
+        # df.to_csv(fname)
+        self.assertDataFrameCorrect(df,reference_data_dir+'/fourier.csv')
+        # os.remove(fname)
 
     def test_Gauss_design_matrix_setup(self):
         """Gauss design matrix.
@@ -96,9 +99,12 @@ class DesignMatrixTestCase(ReferenceTestCase):
         X = trafo.fit_transform(x.reshape((-1,1)))
 
         fname = "tmp_gauss.csv"
-        np.savetxt(fname,X)
-        self.assertCSVFileCorrect(fname,reference_data_dir+'/gauss.csv')
-        os.remove(fname)
+        # np.savetxt(fname,X)
+        # self.assertCSVFileCorrect(fname,reference_data_dir+'/gauss.csv')
+        df = pd.DataFrame(data=X)
+        # df.to_csv(fname)
+        self.assertDataFrameCorrect(df,reference_data_dir+'/gauss.csv')
+        # os.remove(fname)
 
     def test_Chebyshev_design_matrix_setup(self):
         """Chebyshev design matrix.
@@ -107,9 +113,12 @@ class DesignMatrixTestCase(ReferenceTestCase):
         X = trafo.fit_transform(x.reshape((-1,1)))
 
         fname = "tmp_chebyshev.csv"
-        np.savetxt(fname,X)
-        self.assertCSVFileCorrect(fname,reference_data_dir+'/chebyshev.csv')
-        os.remove(fname)
+        # np.savetxt(fname,X)
+        # self.assertCSVFileCorrect(fname,reference_data_dir+'/chebyshev.csv')
+        # os.remove(fname)
+        df = pd.DataFrame(data=X)
+        # df.to_csv(fname)
+        self.assertDataFrameCorrect(df,reference_data_dir+'/chebyshev.csv')
 
 class RVMTestCase(unittest.TestCase):
     """Tests the RVM regression.

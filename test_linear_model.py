@@ -39,7 +39,7 @@ tfun = lambda x: np.sin(x) + np.cos(2.*x)
 # identify platform
 if os.name == "posix":
     win = False
-    print("Posix")
+    print("Posix moep")
 else:
     win = True
     print("Windows")

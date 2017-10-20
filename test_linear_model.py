@@ -36,7 +36,7 @@ k = 10
 
 init_beta = distribution_wrapper(stats.halfnorm(scale=1),size=1,single=True)
 init_alphas = distribution_wrapper(stats.halfnorm(scale=1),single=False)
-Nruns = 50
+Nruns = 5
 tfun = lambda x: np.sin(x) + np.cos(2.*x)
 
 # identify platform
@@ -171,24 +171,23 @@ class RVMTestCase(unittest.TestCase):
         model.fit(self.X,t)
         y, yerr = model.predict(self.X,return_std=True)
 
-    # def test_rerun_regressions(self):
-    #     np.random.seed(seed)
-    #     trafo = FourierFeatures(k=k)
-    #     base_trafo = trafo.fit_transform
+    def test_rerun_regressions(self):
+        np.random.seed(seed)
+        trafo = FourierFeatures(k=k)
+        base_trafo = trafo.fit_transform
         
-    #     model_type = RelevanceVectorMachine
-    #     model_kwargs = dict(n_iter=250,verbose=False,compute_score=True,init_beta=init_beta,
-    #                         init_alphas=init_alphas)
+        model_type = RelevanceVectorMachine
+        model_kwargs = dict(n_iter=250,verbose=False,compute_score=True,init_beta=init_beta,
+                            init_alphas=init_alphas)
         
-    #     runtimes, coefs = repeated_regression(x,base_trafo,model_type,t=None,tfun=tfun,epsilon=epsilon,
-    #                                         model_kwargs=model_kwargs,Nruns=Nruns,return_coefs=True)
-    #     print_run_stats(base_trafo,x,runtimes,coefs,Nruns)
+        runtimes, coefs = repeated_regression(x,base_trafo,model_type,t=None,tfun=tfun,epsilon=epsilon,
+                                            model_kwargs=model_kwargs,Nruns=Nruns,return_coefs=True)
+        print_run_stats(base_trafo,x,runtimes,coefs,Nruns)
         
     # def test_multiple_basis_and_training_set_sizes(self):
     #     np.random.seed(seed)
     #     Ns = [50, 100, 500] # triaing set sizes
     #     Ms = [5, 10, 20] # basis set size
-    #     Nruns = 5 # number of runs
 
     #     epsilon = stats.norm(loc=0,scale=0.01)
     #     tfun = lambda x: np.sin(x) + np.cos(2.*x)

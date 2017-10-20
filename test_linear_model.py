@@ -161,15 +161,15 @@ class RVMTestCase(unittest.TestCase):
         model.fit(self.X,t)
         y, yerr = model.predict(self.X,return_std=True)
 
-    # def test_random_hyperparameters(self):
-    #     np.random.seed(seed)
-    #     init_beta = distribution_wrapper(stats.halfnorm(scale=1),single=True)
-    #     init_alphas = distribution_wrapper(stats.halfnorm(scale=1),single=False)
+    def test_random_hyperparameters(self):
+        np.random.seed(seed)
+        init_beta = distribution_wrapper(stats.halfnorm(scale=1),single=True)
+        init_alphas = distribution_wrapper(stats.halfnorm(scale=1),single=False)
         
-    #     model = RelevanceVectorMachine(n_iter=50,verbose=False,compute_score=True,init_beta=init_beta,
-    #                            init_alphas=init_alphas)
-    #     model.fit(self.X,t)
-    #     y, yerr = model.predict(self.X,return_std=True)
+        model = RelevanceVectorMachine(n_iter=50,verbose=False,compute_score=True,init_beta=init_beta,
+                               init_alphas=init_alphas)
+        model.fit(self.X,t)
+        y, yerr = model.predict(self.X,return_std=True)
 
     # def test_rerun_regressions(self):
     #     np.random.seed(seed)

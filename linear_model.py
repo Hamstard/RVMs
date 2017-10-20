@@ -58,7 +58,7 @@ class GaussianFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin
     include_bias : boolean, optional, default True
         The design matrix includes a bias column if True.
 
-    Examples
+    Example
     --------
     >>> x = np.linspace(-np.pi,np.pi,100)
     >>> trafo = GaussianFeatures(k=30,mu0=-3,dmu=.2)
@@ -73,7 +73,28 @@ class GaussianFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin
         self.include_bias = include_bias
         
     @staticmethod
-    def _basis_functions(n_features, k, include_bias, mu0, dmu, scale):
+    def _basis_functions(n_features, k, include_bias=True, mu0=0., dmu=.5, scale=1.):
+        """Generates a np.ndarray of Gaussian basis functions.
+
+        Parameters
+        ----------
+        n_features : int
+            number of features for each observation
+        k : int
+            number of basis functions
+        include_bias : boolean, optional, default True
+            whether or not to include a bias function (function that returns 1)
+        mu0 : float, optional, default 0
+            position of the first Gaussian
+        dmu : float, optional, default .5
+            increment to shift the Gaussians by
+        scale : float, optional ,default 1
+            scale of all Gaussians
+
+        Returns
+        -------
+        basis : np.ndarray of callables of shape (k(+1),)
+        """
         bias = np.array([lambda x: np.ones(x.shape[0])])
         G = np.array([dis_wrapper(stats.norm(loc=mu0+_k*dmu,scale=scale)) for _k in range(k)])
         
@@ -84,9 +105,7 @@ class GaussianFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin
         return basis
         
     def fit(self,X,y=None):
-        """
-        Compute number of output features.
-
+        """Compute number of output features.
 
         Parameters
         ----------
@@ -107,6 +126,19 @@ class GaussianFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin
     
     def transform(self,X):
         """Applies the basis functions.
+
+        Parameters
+        ----------
+        X : np.ndarray of shape (n_samples, n_input_features)
+
+        Returns
+        -------
+        XP : np.ndarray of shape (n_samples, n_output_features)
+            The design matrix.
+
+        Note
+        ----
+        Requires prior execution of self.fit.
         """
         sklearn.utils.validation.check_is_fitted(self, ['n_input_features_', 'n_output_features_'])
 
@@ -133,6 +165,18 @@ class GaussianFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin
 class FourierFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin):
     """Creates the design matrix X from x using the Fourier basis set.
     
+    Parameters
+    ----------
+    k : int, optional, default 10
+        number of basis functions for both sine and cosine, plus the possible bias
+    include_bias : boolean, optional, default True
+        whether or not to include a bias function (function that returns 1)
+
+    Example
+    -------
+    >>> x = np.linspace(-np.pi,np.pi,100)
+    >>> trafo = FourierFeatures(k=10)
+    >>> X = trafo.fit_transform(x.reshape((-1,1)))
     """
     def __init__(self,k=10,include_bias=True):
         self.k = k
@@ -140,6 +184,21 @@ class FourierFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin)
         
     @staticmethod
     def _basis_functions(n_features, k, include_bias):
+        """Generates a np.ndarray of sine and cosine basis functions.
+
+        Parameters
+        ----------
+        n_features : int
+            number of features for each observation
+        k : int
+            number of basis functions for each sine and cosine
+        include_bias : boolean, optional, default True
+            whether or not to include a bias function (function that returns 1)
+
+        Returns
+        -------
+        basis : np.ndarray of callables of shape (2*k(+1),)
+        """
         bias = np.array([lambda x: np.ones(x.shape[0])])
         sin = np.array([fun_wrapper(np.sin,_k) for _k in range(1,k)])
         cos = np.array([fun_wrapper(np.cos,_k) for _k in range(1,k)])
@@ -152,7 +211,6 @@ class FourierFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin)
     def fit(self,X,y=None):
         """
         Compute number of output features.
-
 
         Parameters
         ----------
@@ -172,6 +230,19 @@ class FourierFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin)
     
     def transform(self,X):
         """Applies the basis functions.
+
+        Parameters
+        ----------
+        X : np.ndarray of shape (n_samples, n_input_features)
+
+        Returns
+        -------
+        XP : np.ndarray of shape (n_samples, n_output_features)
+            The design matrix.
+
+        Note
+        ----
+        Requires prior execution of self.fit.
         """
         sklearn.utils.validation.check_is_fitted(self, ['n_input_features_', 'n_output_features_'])
 
@@ -197,6 +268,18 @@ class FourierFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin)
 class ChebyshevFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin):
     """Creates the design matrix X from x using Chebyshev polynomials.
     
+    Parameters
+    ----------
+    k : int, optional, default 10
+        number of basis functions , plus the possible bias
+    include_bias : boolean, optional, default True
+        whether or not to include a bias function (function that returns 1)
+
+    Example
+    -------
+    >>> x = np.linspace(-np.pi,np.pi,100)
+    >>> trafo = ChebyshevFeatures(k=10)
+    >>> X = trafo.fit_transform(x.reshape((-1,1)))
     """
     def __init__(self,k=10,include_bias=True):
         self.k = k
@@ -204,6 +287,21 @@ class ChebyshevFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixi
         
     @staticmethod
     def _basis_functions(n_features, k, include_bias):
+        """Generates a np.ndarray of Chebyshev polynomials.
+
+        Parameters
+        ----------
+        n_features : int
+            number of features for each observation
+        k : int
+            number of basis functionse
+        include_bias : boolean, optional, default True
+            whether or not to include a bias function (function that returns 1)
+
+        Returns
+        -------
+        basis : np.ndarray of callables of shape (k(+1),)
+        """
         bias = np.array([lambda x: np.ones(x.shape[0])])
         T = np.array([cheb_wrapper(_k,k) for _k in range(1,k)])
         if include_bias:
@@ -215,7 +313,6 @@ class ChebyshevFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixi
     def fit(self,X,y=None):
         """
         Compute number of output features.
-
 
         Parameters
         ----------
@@ -235,6 +332,19 @@ class ChebyshevFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixi
     
     def transform(self,X):
         """Applies the basis functions.
+
+        Parameters
+        ----------
+        X : np.ndarray of shape (n_samples, n_input_features)
+
+        Returns
+        -------
+        XP : np.ndarray of shape (n_samples, n_output_features)
+            The design matrix.
+
+        Note
+        ----
+        Requires prior execution of self.fit.
         """
         sklearn.utils.validation.check_is_fitted(self, ['n_input_features_', 'n_output_features_'])
 

@@ -4,7 +4,7 @@ based regression plus helper functions and example.
 
 Eric Schmidt
 e.schmidt@cantab.net
-2017-10-20
+2017-10-12
 """
 
 from __future__ import print_function
@@ -13,11 +13,7 @@ import sklearn
 import numpy as np
 from scipy import stats
 import time
-import matplotlib
 import matplotlib.pylab as plt
-
-matplotlib.rc('text', usetex=True)
-matplotlib.rcParams['text.latex.preamble']=[r"\usepackage{amsmath}"]
 
 def fun_wrapper(fun,k):
     def _fun_wrapped(x):
@@ -430,9 +426,19 @@ class RelevanceVectorMachine(linear_model.base.LinearModel,sklearn.base.Regresso
         same as for init_beta but for an vector of values    
 
     do_logbook : boolean
-        wether or not to keep the logbook during regression:
-            logbook = {"L":[],"alphas":[],"beta":[],"weights":[],"weights_full":[],"mse":[],"tse":[],"min":[],"max":[],"Sigma":[],
+        Wether or not to keep the logbook during regression. 
+        Format logbook = {"L":[],"alphas":[],"beta":[],"weights":[],"weights_full":[],"mse":[],"tse":[],"min":[],"max":[],"Sigma":[],
                 "dev_est":[],"dev_std":[],"median_se":[]}
+        Note that if do-logbook is True then the weights and hyperparameters with the smallest
+        mse will be stored for future predictions. This is because under some circumstances
+        the convergence may fluctuate strongly.
+                
+    beta_every : int, optional, default 1
+        The noise precision is update every 'beta_every' iterations.
+        
+    update_pct : float, optional, default 1
+        The percentage of alphas to be updated every iteration. This can be useful to prevent
+        RVMs removing all weights in one iteration.
 
     Attributes
     ----------
@@ -463,7 +469,7 @@ class RelevanceVectorMachine(linear_model.base.LinearModel,sklearn.base.Regresso
     
     Example
     -------
-    >>> from linear_model import RelevanceVectorMachine
+    >>> from my_linear_model import RelevanceVectorMachine
     >>> from sklearn import preprocessing
     >>> import numpy as np
     >>> from scipy import stats
@@ -507,7 +513,8 @@ class RelevanceVectorMachine(linear_model.base.LinearModel,sklearn.base.Regresso
     
     def __init__(self, n_iter=300, tol=1.e-3, compute_score=False,
                  fit_intercept=False, normalize=False, copy_X=True,
-                 verbose=False,init_beta=None,init_alphas=None,do_logbook=False):
+                 verbose=False,init_beta=None,init_alphas=None,do_logbook=False,
+                 convergence_condition=None, beta_every=1, update_pct=1.):
         self.n_iter = n_iter
         self.tol = tol
         self.compute_score = compute_score
@@ -517,15 +524,24 @@ class RelevanceVectorMachine(linear_model.base.LinearModel,sklearn.base.Regresso
         self.verbose = verbose
         self.init_beta = init_beta
         self.init_alphas = init_alphas
+        self.beta_every = int(beta_every)
+        assert 0<=update_pct<=1, "'update_pct' has to be between 0 and 1."
+        self.update_pct = update_pct
+        
         self.mse_ = []
         self.dev_est = [] # deviation estimate
         self.dev_std = [] # deviation standard deviation
+        self.dev_mvs_95pct = [] # bayesian mean, variance and standard deviations and confidence intervals
         self.do_logbook = do_logbook
         self.logbook = {"L":[],"alphas":[],"beta":[],"weights":[],"weights_full":[],"mse":[],"tse":[],"min":[],"max":[],"Sigma":[],
-              "dev_est":[],"dev_std":[],"median_se":[]}
+              "dev_est":[],"dev_std":[],"median_se":[],"dev_mvs_95pct":[]}
+        
+        if not convergence_condition is None:
+            assert callable(convergence_condition), "The passed 'convergence_condition' parameter needs to be callable."
+        self.convergence_condition = convergence_condition
 
     @staticmethod
-    def _initialize_beta(y,init_beta=None,verbose=False):
+    def _initialize_beta(y, init_beta=None, verbose=False):
         beta_ = 1. / np.var(y) # default
         if not init_beta is None:
             if callable(init_beta):
@@ -543,7 +559,7 @@ class RelevanceVectorMachine(linear_model.base.LinearModel,sklearn.base.Regresso
         return beta_
 
     @staticmethod
-    def _initialize_alphas(X,init_alphas=None,verbose=False):
+    def _initialize_alphas(X, init_alphas=None, verbose=False):
         n_samples, n_features = X.shape
         alphas_ = np.ones(n_features) # default
         alphas_[1:] = np.inf # setting all but one basis function as inactive (see Faul and Tipping 2003 p.4)
@@ -592,6 +608,7 @@ class RelevanceVectorMachine(linear_model.base.LinearModel,sklearn.base.Regresso
         # Initialization of the hyperparameters
         beta_ = self._initialize_beta(y,init_beta=self.init_beta,verbose=self.verbose)
         alphas_ = self._initialize_alphas(X,init_alphas=self.init_alphas,verbose=self.verbose)
+        new_alphas_ = np.copy(alphas_)
                 
         self.scores_ = list()
         coef_old_ = None
@@ -599,12 +616,15 @@ class RelevanceVectorMachine(linear_model.base.LinearModel,sklearn.base.Regresso
         XT_y = np.dot(X.T, y)
         
         # Convergence loop of the RVM regression
+        N, M = X.shape
         for iter_ in range(self.n_iter):
             
             # (in-)active basis functions
             active = np.where(np.isfinite(alphas_))[0]
             n_active = active.shape[0]
             inactive = np.where(np.isinf(alphas_))[0]
+            if verbose:
+                print("{}: active / inactive functions = {} / {} ".format(iter_+1, len(active),len(inactive)))
             
             # corresponding Sigma matrix (weights hyperprior covariance matrix)
             Sigma = np.diag(alphas_)
@@ -617,12 +637,9 @@ class RelevanceVectorMachine(linear_model.base.LinearModel,sklearn.base.Regresso
                         
             # mse
             dt = y - np.dot(X_a, w_new)
-            mse_ = np.sum((dt) ** 2)
-                        
-            # Recompute beta
-            beta_ = (n_features - n_active + np.sum(alphas_[active]*np.diag(A_new)))
-            beta_ /= mse_
-                        
+            #mse_ = np.linalg.norm(dt)**2
+            mse_ = (dt**2).sum()
+                                                
             # Compute objective function: Gaussian for p(w|X,t,alphas,beta) \propto p(t|Xw,beta)p(w|alphas)
             if self.compute_score:
                 log_prefactor = n_features*(beta_ - 2.*np.pi) - alphas_[active].sum() - 2.*np.pi
@@ -633,6 +650,7 @@ class RelevanceVectorMachine(linear_model.base.LinearModel,sklearn.base.Regresso
                 self.mse_.append(float(mse_/n_samples))
                 self.dev_est.append(dt.mean())
                 self.dev_std.append(dt.std(ddof=1))
+                self.dev_mvs_95pct.append(stats.bayes_mvs(dt,alpha=.95))
             if self.do_logbook:
                 logbook = {"L":[],"alphas":[],"beta":[],
                 "weights":[],"weights_full":[],"mse":[],"tse":[],"min":[],"max":[],"Sigma":[],
@@ -655,27 +673,44 @@ class RelevanceVectorMachine(linear_model.base.LinearModel,sklearn.base.Regresso
                 self.logbook["max"].append(np.amax(dt))
                 self.logbook["dev_est"].append(dt.mean())
                 self.logbook["dev_std"].append(dt.std())
+                self.logbook["dev_mvs_95pct"].append(stats.bayes_mvs(dt,alpha=.95))
                 self.logbook["median_se"].append(np.median(dt))
             
             # Check for convergence
-            if iter_ != 0 and np.sum(np.abs(full_weight_vector(np.copy(w_new),active,inactive) - coef_old_)) < self.tol:
-                if verbose:
-                    print("Convergence after ", str(iter_), " iterations")
-                break
-            elif iter_ == self.n_iter-1:
-                if verbose:
-                    print("Iteration terminated after n_iter = {} step(s)".format(self.n_iter))
-                break
+            if iter_ != 0:
+                coef_new_full = full_weight_vector(np.copy(w_new),active,inactive)
+                if self.convergence_condition is None:
+                    if np.sum(np.abs(coef_new_full - coef_old_)) < self.tol:
+                        if verbose:
+                            print("Convergence after ", str(iter_), " iterations")
+                        break
+                else:
+                    if self.convergence_condition(coef_new_full,coef_old_,self):
+                        if verbose:
+                            print("Convergence after ", str(iter_), " iterations")
+                        break
+                # end of the rope
+                if iter_ >= self.n_iter-1:
+                    if verbose:
+                        print("Iteration terminated after n_iter = {} step(s)".format(self.n_iter))
+                    break
                 
             coef_old_ = full_weight_vector(np.copy(w_new),active,inactive)
             
+            # Recompute beta
+            beta_old_ = np.copy(beta_)
+            if iter_ % self.beta_every == 0:
+                beta_ = (n_samples - n_active + np.sum(alphas_[active]*np.diag(A_new)))
+                beta_ /= mse_
+            
+            """
             # Compute S and Q (Faul and Tipping 2003 eqs. 24 & 25)
-            S0_tilde = beta_ * np.einsum("nm,nm->m", X, X) # in R^(n_features)
-            S1_tilde = - beta_**2 * np.einsum("mn,na->ma",X.T,np.dot(X_a,A_new)) # in R^(n_features x n_active)
+            S0_tilde = beta_old_ * np.einsum("nm,nm->m", X, X) # in R^(n_features)
+            S1_tilde = - beta_old_**2 * np.einsum("mn,na->ma",X.T,np.dot(X_a,A_new)) # in R^(n_features x n_active)
             S2_tilde = np.einsum("na,nm->am",X_a, X) # in R^(n_active x n_features)
             S = S0_tilde + np.einsum("ma,am->m",S1_tilde,S2_tilde)
-            
-            Q0_tilde = beta_ * np.einsum("nm,n->m", X, y) # in R^(n_features)
+                        
+            Q0_tilde = beta_old_ * np.einsum("nm,n->m", X, y) # in R^(n_features)
             Q2_tilde = np.einsum("na,n->a",X_a, y) # in R^(n_active)
             Q = Q0_tilde + np.einsum("ma,a->m",S1_tilde,Q2_tilde)
                         
@@ -688,8 +723,48 @@ class RelevanceVectorMachine(linear_model.base.LinearModel,sklearn.base.Regresso
             # Recompute alphas using pruning
             active = np.where(q**2>s)[0]
             inactive = np.where(np.logical_not(q**2>s))[0]
-            alphas_[inactive] = np.inf
-            alphas_[active] = s[active]**2/(q[active]**2-s[active])
+            new_alphas_[inactive] = np.inf
+            new_alphas_[active] = s[active]**2/(q[active]**2-s[active])
+            """
+                        
+            # alternative version
+            tmp = beta_old_ * X.T - beta_old_**2 * np.dot(X.T.dot(X_a), A_new.dot(X_a.T))
+            Q = np.dot(tmp,y)
+            Q = np.reshape(Q,(-1,))
+            S = np.einsum("ij,ji->i",tmp,X)
+            
+            q, s = np.zeros(M), np.zeros(M)
+            q[inactive] = Q[inactive]
+            q[active] = alphas_[active]*Q[active]/(alphas_[active]-S[active])
+            s[inactive] = S[inactive]
+            s[active] = alphas_[active]*S[active]/(alphas_[active]-S[active])
+            
+            q2_larger_s = np.where(q**2>s)[0]
+            q2_smaller_s = np.where(q**2<=s)[0]
+            new_alphas_[q2_larger_s] = s[q2_larger_s]**2/(q[q2_larger_s]**2-s[q2_larger_s])
+            new_alphas_[q2_smaller_s] = np.inf
+            
+            if self.update_pct < 1:
+                ix = np.random.choice(np.arange(M),replace=False,size=int(M*self.update_pct))
+                alphas_[ix] = new_alphas_[ix]
+            else:
+                alphas_ = np.copy(new_alphas_)
+                        
+        if self.do_logbook:
+            ix = np.argsort(np.array(self.logbook["mse"]))[0]
+            alphas_ = np.array(self.logbook["alphas"][ix])
+            beta_ = self.logbook["beta"][ix]
+            
+            active = np.where(np.isfinite(alphas_))[0]
+            inactive = np.where(np.isinf(alphas_))[0]
+            
+            Sigma = np.diag(alphas_)
+            Sigma_a = np.diag(alphas_[active]) # active part of Sigma -> numpy select?
+            X_a = X[:,active] # active part of the design matrix
+            
+            # weights posterior mean (w_new) and covariance (A_new)
+            A_new = np.linalg.inv(beta_ * X_a.T.dot(X_a) + Sigma_a)
+            w_new = beta_ * A_new.dot(X_a.T.dot(y))
             
         self.coef_ = w_new
         self.active = active
@@ -750,20 +825,11 @@ def distribution_wrapper(dis,size=None,single=True):
     size : int
         How many samples to draw (if given, see 'single').
     single : boolean
-        Whether or not a single float value is to be returned or an 
-        array of values. If single == False then either 'size' samples 
-        are drawn or otherwise if the design matrix is provided as an 
-        argument of the wrapped function 'samples' then as M samples 
-        are drawn (N, M = X.shape).
-
-    Example
-    -------
-    >>> init_beta = distribution_wrapper(stats.halfnorm(scale=1),size=1,single=True)
-    0.489243101252
-    >>> init_alphas = distribution_wrapper(stats.halfnorm(scale=1),single=False)
-    [ 0.49100388  0.13933493  2.0644248   0.51169082  1.6274592   0.89930022]
+        Whether or not a single float value is to be returned or an array of values.
+        If single == False then either 'size' samples are drawn or otherwise if the
+        design matrix is provided as an argument of the wrapped function 'samples'
+        then as M samples are drawn (N, M = X.shape).
     """
-
     def samples(X=None):
         if single:
             return dis.rvs(size=1)[0]
@@ -839,7 +905,8 @@ def print_run_stats(base_trafo,x,runtimes,coefs,Nruns,show_coefs=True):
     if show_coefs:
         print("\ncoefs (estimate +- 2*std):")
         for i in range(coefs.shape[1]):
-            print("    {}: {:.4f} +- {:.4f}".format(i,coefs[:,i].mean(axis=0),2*np.std(coefs[:,i],axis=0,ddof=1)))
+            print("    {}: {:.4f} +- {:.4f}".format(i,coefs[:,i].mean(axis=0),
+                2*np.std(coefs[:,i],axis=0,ddof=1)))        
 
 def plot_summary(models,noise,x,t,X,coefs,base_trafo):
 
@@ -922,6 +989,33 @@ def plot_summary(models,noise,x,t,X,coefs,base_trafo):
     ax.set_title("MSE curves of all regressions")
     plt.tight_layout()
     plt.show()
+
+    epsilon = stats.norm(loc=0,scale=0.01)
+    tfun = lambda x: np.sin(x) + np.cos(2.*x)
+
+    init_beta = distribution_wrapper(stats.halfnorm(scale=1),size=1,single=True)
+    init_alphas = distribution_wrapper(stats.halfnorm(scale=1),single=False)
+
+    Nruns = 100
+
+    N = 100
+    Ms = [3,5,10,20,50]
+
+    t_est, t_err = [], []
+    for M in Ms:
+        x = np.linspace(0,1,N)
+        k = M
+        
+        trafo = FourierFeatures(k=k)
+        base_trafo = trafo.fit_transform
+        
+        model_type = RelevanceVectorMachine
+        model_kwargs = dict(n_iter=250,verbose=False,compute_score=True,init_beta=init_beta,
+                            init_alphas=init_alphas)
+
+        runtimes, coefs = repeated_regression(x,base_trafo,model_type,t=None,tfun=tfun,epsilon=epsilon,
+                                            model_kwargs=model_kwargs,Nruns=Nruns,return_coefs=True)
+        print_run_stats(base_trafo,x,runtimes,coefs,Nruns)
 
 if __name__ == "__main__":
     epsilon = stats.norm(loc=0,scale=0.01)

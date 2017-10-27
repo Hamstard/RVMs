@@ -843,7 +843,7 @@ def distribution_wrapper(dis,size=None,single=True):
     return samples
 
 def repeated_regression(x,base_trafo,model_type,model_kwargs,t=None,tfun=None,
-        epsilon=None,Nruns=100,return_coefs=False,return_models=False,):
+        epsilon=None,Nruns=100,return_coefs=False,return_models=False,base_trafo_1=None):
     """Repeats regressions.
 
     This can be used to do multiple regressions on freshly regenerated 
@@ -873,6 +873,9 @@ def repeated_regression(x,base_trafo,model_type,model_kwargs,t=None,tfun=None,
     """
     
     X = base_trafo(x.reshape((-1,1)))
+    if callable(base_trafo_1):
+        _X = base_trafo_1(x.reshape((-1,1)))
+        X = np.vstack((X,_X))
     assert not t is None or not (tfun is None and epsilon is None), "Either 't' has to be given or 'tfun' and 'epsilon'!"
     if t is None:
         t = tfun(x) + epsilon.rvs(size=x.shape[0])
@@ -918,7 +921,7 @@ def plot_summary(models,noise,x,t,X,coefs,base_trafo):
 
     # summarizing all predictions
     ax = fig.add_subplot(221)
-    ax.fill_between(x,y-yerr,y+yerr,label="95%",alpha=0.1,color="red")
+    ax.fill_between(x,y-yerr,y+yerr,label="95\%",alpha=0.1,color="red")
     ax.plot(x,t,'o',label="true",markerfacecolor="None",ms=2.,alpha=.75)
     ax.plot(x,y,'-',label="estimate")
     ax.set_xlabel("input")
@@ -990,33 +993,6 @@ def plot_summary(models,noise,x,t,X,coefs,base_trafo):
     plt.tight_layout()
     plt.show()
 
-    epsilon = stats.norm(loc=0,scale=0.01)
-    tfun = lambda x: np.sin(x) + np.cos(2.*x)
-
-    init_beta = distribution_wrapper(stats.halfnorm(scale=1),size=1,single=True)
-    init_alphas = distribution_wrapper(stats.halfnorm(scale=1),single=False)
-
-    Nruns = 100
-
-    N = 100
-    Ms = [3,5,10,20,50]
-
-    t_est, t_err = [], []
-    for M in Ms:
-        x = np.linspace(0,1,N)
-        k = M
-        
-        trafo = FourierFeatures(k=k)
-        base_trafo = trafo.fit_transform
-        
-        model_type = RelevanceVectorMachine
-        model_kwargs = dict(n_iter=250,verbose=False,compute_score=True,init_beta=init_beta,
-                            init_alphas=init_alphas)
-
-        runtimes, coefs = repeated_regression(x,base_trafo,model_type,t=None,tfun=tfun,epsilon=epsilon,
-                                            model_kwargs=model_kwargs,Nruns=Nruns,return_coefs=True)
-        print_run_stats(base_trafo,x,runtimes,coefs,Nruns)
-
 if __name__ == "__main__":
     epsilon = stats.norm(loc=0,scale=0.01)
     tfun = lambda x: np.sin(x) + np.cos(2.*x)
@@ -1041,6 +1017,6 @@ if __name__ == "__main__":
         model_kwargs = dict(n_iter=250,verbose=False,compute_score=True,init_beta=init_beta,
                             init_alphas=init_alphas)
 
-        runtimes, coefs = regression_speedtest(x,base_trafo,model_type,t=None,tfun=tfun,epsilon=epsilon,
+        runtimes, coefs = repeated_regression(x,base_trafo,model_type,t=None,tfun=tfun,epsilon=epsilon,
                                             model_kwargs=model_kwargs,Nruns=Nruns,return_coefs=True)
         print_run_stats(base_trafo,x,runtimes,coefs,Nruns)

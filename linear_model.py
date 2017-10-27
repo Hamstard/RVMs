@@ -911,19 +911,35 @@ def print_run_stats(base_trafo,x,runtimes,coefs,Nruns,show_coefs=True):
             print("    {}: {:.4f} +- {:.4f}".format(i,coefs[:,i].mean(axis=0),
                 2*np.std(coefs[:,i],axis=0,ddof=1)))        
 
-def plot_summary(models,noise,x,t,X,coefs,base_trafo):
-
+def plot_summary(models,noise,x,t,X,coefs,base_trafo,X_1=None):
+    
+    N = X.shape[0]
+    xlim = (x.min(),x.max())
+    
     ys = np.array([m.predict(X) for m in models])
     y = ys.mean(axis=0)
     yerr = 2*ys.std(axis=0,ddof=1)
+    
+    if not X_1 is None:
+        ys_1 = np.array([m.predict(X_1) for m in models])
+        y_1 = ys_1.mean(axis=0)
+        yerr_1 = 2*ys_1.std(axis=0,ddof=1)
 
     fig = plt.figure(figsize=(5,7))
 
     # summarizing all predictions
     ax = fig.add_subplot(221)
     ax.fill_between(x,y-yerr,y+yerr,label="95\%",alpha=0.1,color="red")
-    ax.plot(x,t,'o',label="true",markerfacecolor="None",ms=2.,alpha=.75)
     ax.plot(x,y,'-',label="estimate")
+    
+    if not X_1 is None:
+        ax.fill_between(x,y_1-yerr_1,y_1+yerr_1,label="95\% X\_1",alpha=0.1,color="orange")
+        ax.plot(x,y_1,'-',label="estimate X\_1")
+        
+    ax.plot(x,t[:N],'o',label="true",markerfacecolor="None",ms=2.,alpha=.75)
+    if not X_1 is None:
+        ax.plot(x,t[N:],'o',label="true X\_1",markerfacecolor="None",ms=2.,alpha=.75)
+        
     ax.set_xlabel("input")
     ax.set_ylabel("output")
     ax.set_title("y vs t")
@@ -946,11 +962,11 @@ def plot_summary(models,noise,x,t,X,coefs,base_trafo):
     noise2scale = lambda noise,axis: np.sqrt(2.)*np.std(noise,axis=axis,ddof=1)
 
     betas = np.array([m.beta_ for m in models])
-
+    
     ax3 = fig.add_subplot(223)
-    ax3.hist(noise,label="true noise",normed=True,bins=100,range=(-5,5))
+    ax3.hist(noise,label="true noise",normed=True,bins=100,range=xlim)
     xlim = ax3.get_xlim()
-    _xp = np.linspace(xlim[0],xlim[1],100)
+    _xp = np.linspace(xlim[0],xlim[1],N)
     for model in models:
         norm_rvm = stats.norm(loc=0,scale=beta2scale(model.beta_))
         ax3.plot(_xp,norm_rvm.pdf(_xp),'-k',linewidth=.1)
@@ -963,13 +979,14 @@ def plot_summary(models,noise,x,t,X,coefs,base_trafo):
     # noise precision: error distribution vs true noise
     ax4 = fig.add_subplot(224)
     bins = 100
-    ax4.hist(noise,label="true noise",normed=True,bins=bins,range=(-5,5))
-    xlim = ax.get_xlim()
-    _xp = np.linspace(xlim[0],xlim[1],100)
+    ax4.hist(noise,label="true noise",normed=True,bins=bins,range=xlim)
+    
+    _xp = np.linspace(xlim[0],xlim[1],N)
     _X = base_trafo(_xp.reshape((-1,1)))
+        
     pred_noise = []
     for model in models:
-        n = model.predict(_X)-t
+        n = model.predict(_X)-t[:N]
         pred_noise.append(n)
         ax4.hist(n,bins=bins,histtype="step",linewidth=.1,normed=True,range=xlim,color="k")
     pred_noise = np.array(pred_noise)

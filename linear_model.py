@@ -11,18 +11,18 @@ from __future__ import print_function
 from sklearn import linear_model, utils, preprocessing
 import sklearn
 import numpy as np
-from scipy import stats
+from scipy import stats, misc
 import time
 import matplotlib.pylab as plt
 
-def fun_wrapper(fun,k):
+def fun_wrapper(fun, k, k_der=0, dx=1.):
     def _fun_wrapped(x):
-        return fun(x*k)
+        return misc.derivative(fun, x*k, dx=dx, n=k_der)
     return _fun_wrapped
 
-def dis_wrapper(dis):
+def dis_wrapper(dis,dx=1.,k_der=1):
     def _dis_wrapped(x):
-        return dis.pdf(x)
+        return misc.derivative(dis.pdf,x,dx=dx,n=k_der)
     return _dis_wrapped
 
 def cheb_wrapper(i,k):
@@ -33,7 +33,6 @@ def cheb_wrapper(i,k):
     def _cheb_wrapped(x):
         return np.polynomial.chebyshev.chebval(x,vec)
     return _cheb_wrapped
-
 
 class GaussianFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin):
     """Generate Gaussian features.
@@ -61,15 +60,17 @@ class GaussianFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin
     >>> X = trafo.fit_transform(x.reshape((-1,1)))
     
     """
-    def __init__(self,k=10,mu0=0,dmu=1.,scale=1.,include_bias=True):
+    def __init__(self,k=10,mu0=0,dmu=1.,scale=1.,include_bias=True,k_der=0):
         self.k = k
         self.mu0 = mu0
         self.dmu = dmu
         self.scale = scale
         self.include_bias = include_bias
+        self.k_der = k_der
         
     @staticmethod
-    def _basis_functions(n_features, k, include_bias=True, mu0=0., dmu=.5, scale=1.):
+    def _basis_functions(n_features, k, include_bias=True, mu0=0., dmu=.5, scale=1.,
+                         k_der=0):
         """Generates a np.ndarray of Gaussian basis functions.
 
         Parameters
@@ -84,15 +85,20 @@ class GaussianFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin
             position of the first Gaussian
         dmu : float, optional, default .5
             increment to shift the Gaussians by
-        scale : float, optional ,default 1
+        scale : float, optional, default 1
             scale of all Gaussians
+        k_der : int, optional, default 0
+            kth Derivative of the basis functions.
 
         Returns
         -------
         basis : np.ndarray of callables of shape (k(+1),)
         """
-        bias = np.array([lambda x: np.ones(x.shape[0])])
-        G = np.array([dis_wrapper(stats.norm(loc=mu0+_k*dmu,scale=scale)) for _k in range(k)])
+        if k_der == 0:
+            bias = np.array([lambda x: np.ones(x.shape[0])])
+        else: # the bias is a constant for X_0 and therefore 0 for X_1
+            bias = np.array([lambda x: np.zeros(x.shape[0])])
+        G = np.array([dis_wrapper(stats.norm(loc=mu0+_k*dmu,scale=scale),k_der=k_der) for _k in range(k)])
         
         if include_bias:
             basis = np.concatenate((bias,G))
@@ -116,7 +122,7 @@ class GaussianFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin
         self.n_input_features_ = n_features
         
         self.n_output_features_ = len(self._basis_functions(n_features,self.k, 
-                                        self.include_bias, self.mu0, self.dmu, self.scale))
+                                        self.include_bias, self.mu0, self.dmu, self.scale, k_der=self.k_der))
         return self
         
     
@@ -147,7 +153,7 @@ class GaussianFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin
         # allocate output data
         XP = np.empty((n_samples, self.n_output_features_), dtype=X.dtype)
         basis = self._basis_functions(self.n_input_features_, self.k, self.include_bias,
-                                     self.mu0, self.dmu, self.scale)
+                                     self.mu0, self.dmu, self.scale, k_der=self.k_der)
         for i,b in enumerate(basis):
             XP[:,i] = b(X).ravel()
         return XP
@@ -167,19 +173,22 @@ class FourierFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin)
         number of basis functions for both sine and cosine, plus the possible bias
     include_bias : boolean, optional, default True
         whether or not to include a bias function (function that returns 1)
-
+    k_der : int, optional, default 0
+            kth Derivative of the basis functions.
+            
     Example
     -------
     >>> x = np.linspace(-np.pi,np.pi,100)
     >>> trafo = FourierFeatures(k=10)
     >>> X = trafo.fit_transform(x.reshape((-1,1)))
     """
-    def __init__(self,k=10,include_bias=True):
+    def __init__(self, k=10, include_bias=True, k_der=0):
         self.k = k
+        self.k_der = k_der
         self.include_bias = include_bias
         
     @staticmethod
-    def _basis_functions(n_features, k, include_bias):
+    def _basis_functions(n_features, k, include_bias, k_der=0):
         """Generates a np.ndarray of sine and cosine basis functions.
 
         Parameters
@@ -195,9 +204,11 @@ class FourierFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin)
         -------
         basis : np.ndarray of callables of shape (2*k(+1),)
         """
-        bias = np.array([lambda x: np.ones(x.shape[0])])
-        sin = np.array([fun_wrapper(np.sin,_k) for _k in range(1,k)])
-        cos = np.array([fun_wrapper(np.cos,_k) for _k in range(1,k)])
+        bias = np.array([lambda x: np.ones(x.shape[0])]) if k_der==0 \
+            else np.array([lambda x: np.zeros(x.shape[0])])
+        sin = np.array([fun_wrapper(np.sin,_k, k_der=k_der) for _k in range(1,k)])
+        cos = np.array([fun_wrapper(np.cos,_k, k_der=k_der) for _k in range(1,k)])
+        
         if include_bias:
             basis = np.concatenate((bias,sin,cos))
         else:
@@ -250,7 +261,8 @@ class FourierFeatures(sklearn.base.BaseEstimator, sklearn.base.TransformerMixin)
 
         # allocate output data
         XP = np.empty((n_samples, self.n_output_features_), dtype=X.dtype)
-        basis = self._basis_functions(self.n_input_features_,self.k,self.include_bias)
+        basis = self._basis_functions(self.n_input_features_, self.k, self.include_bias,\
+                                      k_der=self.k_der)
         for i,b in enumerate(basis):
             XP[:,i] = b(X).ravel()
         return XP

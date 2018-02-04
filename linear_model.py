@@ -14,6 +14,7 @@ import numpy as np
 from scipy import stats, misc, linalg
 import time
 import matplotlib.pylab as plt
+from math import log
 
 def fun_wrapper(fun, k, k_der=0, dx=1.):
     def _fun_wrapped(x):
@@ -829,7 +830,11 @@ class RelevanceVectorMachine(linear_model.base.LinearModel,sklearn.base.Regresso
         assert self.do_logbook, "Logbook empty because do_logbook = {}.".format(self.do_logbook)
         return self.logbook
     
-from math import log
+def iscomplex(a, verbose=False, atol=1e-20):
+    tmp = np.absolute(a.imag).sum()
+    if verbose:
+        return not np.isclose(tmp, 0, atol=atol), tmp
+    return not np.isclose(tmp, 0, atol=atol)
 
 class BayesianRidge(linear_model.base.LinearModel, sklearn.base.RegressorMixin):
     """Bayesian ridge regression
@@ -1142,7 +1147,9 @@ class BayesianRidge(linear_model.base.LinearModel, sklearn.base.RegressorMixin):
                 rmse_ = [np.sum((y[i] - np.dot(X[i], coef_)) ** 2) for i in range(N_alphas)]
                 
                 sum_alpha_XT_X = sum([alpha_[i]*XT_X[i] for i in range(N_alphas)])
-                eig_val_sum_alpha_XT_X, eig_vec_sum_alpha_XT_X = np.linalg.eig(sum_alpha_XT_X)
+                #eig_val_sum_alpha_XT_X, eig_vec_sum_alpha_XT_X = np.linalg.eig(sum_alpha_XT_X)
+                _u, _s, _v = linalg.svd(sum_alpha_XT_X)
+                eig_val_sum_alpha_XT_X = _s
                 
                 gamma_ = (np.sum((eig_val_sum_alpha_XT_X) /
                           (lambda_ + eig_val_sum_alpha_XT_X)))

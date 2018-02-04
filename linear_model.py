@@ -11,7 +11,7 @@ from __future__ import print_function
 from sklearn import linear_model, utils, preprocessing
 import sklearn
 import numpy as np
-from scipy import stats, misc
+from scipy import stats, misc, linalg
 import time
 import matplotlib.pylab as plt
 
@@ -829,6 +829,449 @@ class RelevanceVectorMachine(linear_model.base.LinearModel,sklearn.base.Regresso
         assert self.do_logbook, "Logbook empty because do_logbook = {}.".format(self.do_logbook)
         return self.logbook
     
+from math import log
+
+class BayesianRidge(linear_model.base.LinearModel, sklearn.base.RegressorMixin):
+    """Bayesian ridge regression
+
+    Fit a Bayesian ridge model and optimize the regularization parameters
+    lambda (precision of the weights) and alpha (precision of the noise).
+
+    Read more in the :ref:`User Guide <bayesian_regression>`.
+
+    Parameters
+    ----------
+    n_iter : int, optional
+        Maximum number of iterations.  Default is 300.
+
+    tol : float, optional
+        Stop the algorithm if w has converged. Default is 1.e-3.
+
+    alpha_1 : float, optional
+        Hyper-parameter : shape parameter for the Gamma distribution prior
+        over the alpha parameter. Default is 1.e-6
+
+    alpha_2 : float, optional
+        Hyper-parameter : inverse scale parameter (rate parameter) for the
+        Gamma distribution prior over the alpha parameter.
+        Default is 1.e-6.
+
+    lambda_1 : float, optional
+        Hyper-parameter : shape parameter for the Gamma distribution prior
+        over the lambda parameter. Default is 1.e-6.
+
+    lambda_2 : float, optional
+        Hyper-parameter : inverse scale parameter (rate parameter) for the
+        Gamma distribution prior over the lambda parameter.
+        Default is 1.e-6
+
+    compute_score : boolean, optional
+        If True, compute the objective function at each step of the model.
+        Default is False
+
+    fit_intercept : boolean, optional
+        whether to calculate the intercept for this model. If set
+        to false, no intercept will be used in calculations
+        (e.g. data is expected to be already centered).
+        Default is True.
+
+    normalize : boolean, optional, default False
+        This parameter is ignored when ``fit_intercept`` is set to False.
+        If True, the regressors X will be normalized before regression by
+        subtracting the mean and dividing by the l2-norm.
+        If you wish to standardize, please use
+        :class:`sklearn.preprocessing.StandardScaler` before calling ``fit``
+        on an estimator with ``normalize=False``.
+
+    copy_X : boolean, optional, default True
+        If True, X will be copied; else, it may be overwritten.
+
+    verbose : boolean, optional, default False
+        Verbose mode when fitting the model.
+
+
+    Attributes
+    ----------
+    coef_ : array, shape = (n_features)
+        Coefficients of the regression model (mean of distribution)
+
+    alpha_ : float
+       estimated precision of the noise.
+
+    lambda_ : float
+       estimated precision of the weights.
+
+    sigma_ : array, shape = (n_features, n_features)
+        estimated variance-covariance matrix of the weights
+
+    scores_ : float
+        if computed, value of the objective function (to be maximized)
+
+    Examples
+    --------
+    >>> from sklearn import linear_model
+    >>> clf = linear_model.BayesianRidge()
+    >>> clf.fit([[0,0], [1, 1], [2, 2]], [0, 1, 2])
+    ... # doctest: +NORMALIZE_WHITESPACE
+    BayesianRidge(alpha_1=1e-06, alpha_2=1e-06, compute_score=False,
+            copy_X=True, fit_intercept=True, lambda_1=1e-06, lambda_2=1e-06,
+            n_iter=300, normalize=False, tol=0.001, verbose=False)
+    >>> clf.predict([[1, 1]])
+    array([ 1.])
+
+    Notes
+    -----
+    For an example, see :ref:`examples/linear_model/plot_bayesian_ridge.py
+    <sphx_glr_auto_examples_linear_model_plot_bayesian_ridge.py>`.
+
+    References
+    ----------
+    D. J. C. MacKay, Bayesian Interpolation, Computation and Neural Systems,
+    Vol. 4, No. 3, 1992.
+
+    R. Salakhutdinov, Lecture notes on Statistical Machine Learning,
+    http://www.utstat.toronto.edu/~rsalakhu/sta4273/notes/Lecture2.pdf#page=15
+    Their beta is our ``self.alpha_``
+    Their alpha is our ``self.lambda_``
+    """
+
+    def __init__(self, n_iter=300, tol=1.e-3, alpha_1=1.e-6, alpha_2=1.e-6,
+                 lambda_1=1.e-6, lambda_2=1.e-6, compute_score=False,
+                 fit_intercept=True, normalize=False, copy_X=True,
+                 verbose=False, kind="sk"):
+        self.n_iter = n_iter
+        self.tol = tol
+        self.alpha_1 = alpha_1
+        self.alpha_2 = alpha_2
+        self.lambda_1 = lambda_1
+        self.lambda_2 = lambda_2
+        self.compute_score = compute_score
+        self.fit_intercept = fit_intercept
+        self.normalize = normalize
+        self.copy_X = copy_X
+        self.verbose = verbose
+        
+        # modification
+        implemented_kinds = ["sk","naiv"]
+        assert kind in implemented_kinds, "Given 'kind' parameter (%s) not recognized! Implemented kinds: %s" % (kind,implemented_kinds)
+        self.kind = kind
+
+    def fit(self, X, y):
+        """Fit the model
+
+        Parameters
+        ----------
+        X : numpy array of shape [n_samples,n_features]
+            Training data
+        y : numpy array of shape [n_samples]
+            Target values. Will be cast to X's dtype if necessary
+
+        Returns
+        -------
+        self : returns an instance of self.
+        """
+        if all([isinstance(X,np.ndarray), isinstance(y,np.ndarray)]):
+            multiple_alphas = False
+        elif all([isinstance(X,list), isinstance(y,list)]):
+            assert len(X) == len(y), "The length of X (%i) and y (%i) have to be identical!" % (len(X), len(y))
+            assert len(set([_x.shape[1] for _x in X]))==1, "The number of features has to be the same for all X!"
+            N_alphas = len(X)
+            if all([isinstance(_x, np.ndarray) for _x in X]) and all([isinstance(_y, np.ndarray) for _y in y]):
+                for i in range(N_alphas):
+                    assert len(X[i])==len(y[i]), "The number of entries in X[%i] (%i) and y[%i] (%i) has to be equal!" % (len(X[i]), len(y[i]))
+                multiple_alphas = True
+            else:
+                raise ValueError("X (%s) and y (%s) both have to contain only np.ndarrays!" %([type(_x) for _x in X], [type(_y) for _y in y]))
+        else:
+            raise ValueError("X (%s) and y (%s) both need to be either numpy arrays of lists or numpy arrays!" %(type(X),type(y)))
+            
+        if not multiple_alphas:
+            X, y = utils.check_X_y(X, y, dtype=np.float64, y_numeric=True)
+            X, y, X_offset_, y_offset_, X_scale_ = self._preprocess_data(
+                X, y, self.fit_intercept, self.normalize, self.copy_X)
+            self.X_offset_ = X_offset_
+            self.X_scale_ = X_scale_
+            n_samples, n_features = X.shape
+        else:
+            X_offset_, y_offset_, X_scale_ = [None for v in range(N_alphas)],\
+                                            [None for v in range(N_alphas)],\
+                                            [None for v in range(N_alphas)]
+            n_samples = [None for v in range(N_alphas)]
+            
+            for i in range(N_alphas):
+                X[i], y[i] = utils.check_X_y(X[i], y[i], dtype=np.float64, y_numeric=True)
+                X[i], y[i], X_offset_[i], y_offset_[i], X_scale_[i] = self._preprocess_data(
+                    X[i], y[i], self.fit_intercept, self.normalize, self.copy_X)
+                n_samples[i], n_features = X[i].shape
+            self.X_offset_ = X_offset_
+            self.X_scale_ = X_scale_
+            
+
+        # Initialization of the values of the parameters
+        if not multiple_alphas:
+            alpha_ = 1. / np.var(y) # alpha is the noise precision parameter (commonly beta)
+        else:
+            alpha_ = [1. / np.var(y[i]) for i in range(N_alphas)]
+        lambda_ = 1. # lambda is the weights prior precision parameter (commonly alpha)
+
+        verbose = self.verbose
+        lambda_1 = self.lambda_1
+        lambda_2 = self.lambda_2
+        alpha_1 = self.alpha_1
+        alpha_2 = self.alpha_2
+
+        self.scores_ = list()
+        coef_old_ = None
+        
+        if not multiple_alphas:
+            XT_y = np.dot(X.T, y)
+            U, S, Vh = linalg.svd(X, full_matrices=False)
+            eigen_vals_ = S ** 2
+        
+            XT_X = X.T.dot(X)
+        else:
+            XT_y = [None for v in range(N_alphas)]
+            U = [None for v in range(N_alphas)]
+            S = [None for v in range(N_alphas)]
+            Vh = [None for v in range(N_alphas)]
+            eigen_vals_ = [None for v in range(N_alphas)]
+            XT_X = [None for v in range(N_alphas)]
+            
+            for i in range(N_alphas):
+                XT_y[i] = np.dot(X[i].T, y[i])
+                U[i], S[i], Vh[i] = linalg.svd(X[i], full_matrices=False)
+                eigen_vals_[i] = S[i] ** 2
+
+                XT_X[i] = X[i].T.dot(X[i])
+                            
+
+        # Convergence loop of the bayesian ridge regression
+        N_g_M = n_samples > n_features if not multiple_alphas else all([n_samples[i]>n_features for i in range(N_alphas)])
+        
+        for iter_ in range(self.n_iter):
+
+            # Compute mu and sigma
+            # sigma_ = lambda_ / alpha_ * np.eye(n_features) + np.dot(X.T, X)
+            # coef_ = sigma_^-1 * XT * y
+            if not multiple_alphas:
+                if self.kind == "sk":
+                    if n_samples > n_features:
+                        coef_ = np.dot(Vh.T,
+                                       Vh / (eigen_vals_ +
+                                             lambda_ / alpha_)[:, np.newaxis])
+                        coef_ = np.dot(coef_, XT_y)
+                        if self.compute_score:
+                            logdet_sigma_ = - np.sum(
+                                np.log(lambda_ + alpha_ * eigen_vals_))
+                    else:
+                        coef_ = np.dot(X.T, np.dot(
+                            U / (eigen_vals_ + lambda_ / alpha_)[None, :], U.T))
+                        coef_ = np.dot(coef_, y)
+                        if self.compute_score:
+                            logdet_sigma_ = lambda_ * np.ones(n_features)
+                            logdet_sigma_[:n_samples] += alpha_ * eigen_vals_
+                            logdet_sigma_ = - np.sum(np.log(logdet_sigma_))
+
+                elif self.kind == "naiv":
+                    sigma_inv_ = alpha_ * XT_X + lambda_ * np.eye(n_features)
+                    sigma_ = np.linalg.inv(sigma_inv_)
+                    coef_ = sigma_.dot(alpha_*XT_y)
+                    if self.compute_score:
+                        logdet_sigma = - np.sum(np.log(sigma_))
+            else:
+                if self.kind == "sk":
+                    raise NotImplementedError
+                    if N_g_M:
+                        coef_ = np.dot(Vh.T,
+                                       Vh / (eigen_vals_ +
+                                             lambda_ / alpha_)[:, np.newaxis])
+                        coef_ = np.dot(coef_, XT_y)
+                        if self.compute_score:
+                            logdet_sigma_ = - np.sum(
+                                np.log(lambda_ + alpha_ * eigen_vals_))
+                    else:
+                        coef_ = np.dot(X.T, np.dot(
+                            U / (eigen_vals_ + lambda_ / alpha_)[None, :], U.T))
+                        coef_ = np.dot(coef_, y)
+                        if self.compute_score:
+                            logdet_sigma_ = lambda_ * np.ones(n_features)
+                            logdet_sigma_[:n_samples] += alpha_ * eigen_vals_
+                            logdet_sigma_ = - np.sum(np.log(logdet_sigma_))
+
+                elif self.kind == "naiv":
+                    alpha_XT_X = alpha_[0] * XT_X[0]
+                    alpha_XT_y = alpha_[0]*XT_y[0]
+                    for i in range(1,N_alphas):
+                        alpha_XT_X += alpha_[i] * XT_X[i]
+                        alpha_XT_y += alpha_[i]*XT_y[i]
+                    sigma_inv_ = alpha_XT_X + lambda_ * np.eye(n_features)
+                    sigma_ = np.linalg.inv(sigma_inv_)
+                    coef_ = sigma_.dot(alpha_XT_y)
+                    if self.compute_score:
+                        logdet_sigma = - np.sum(np.log(sigma_))
+            
+            # Preserve the alpha and lambda values that were used to
+            # calculate the final coefficients
+            self.alpha_ = alpha_
+            self.lambda_ = lambda_
+
+            # Update alpha and lambda
+            if not multiple_alphas:
+                rmse_ = np.sum((y - np.dot(X, coef_)) ** 2)
+                
+                gamma_ = (np.sum((alpha_ * eigen_vals_) /
+                          (lambda_ + alpha_ * eigen_vals_)))
+                lambda_ = ((gamma_ + 2 * lambda_1) /
+                           (np.sum(coef_ ** 2) + 2 * lambda_2))
+                alpha_ = ((n_samples - gamma_ + 2 * alpha_1) /
+                          (rmse_ + 2 * alpha_2))
+                
+
+                # Compute the objective function
+                if self.compute_score:
+                    s = lambda_1 * log(lambda_) - lambda_2 * lambda_
+                    s += alpha_1 * log(alpha_) - alpha_2 * alpha_
+                    s += 0.5 * (n_features * log(lambda_) +
+                                n_samples * log(alpha_) -
+                                alpha_ * rmse_ -
+                                (lambda_ * np.sum(coef_ ** 2)) -
+                                logdet_sigma_ -
+                                n_samples * log(2 * np.pi))
+                    self.scores_.append(s)
+            else:
+                rmse_ = [np.sum((y[i] - np.dot(X[i], coef_)) ** 2) for i in range(N_alphas)]
+                
+                sum_alpha_XT_X = sum([alpha_[i]*XT_X[i] for i in range(N_alphas)])
+                eig_val_sum_alpha_XT_X, eig_vec_sum_alpha_XT_X = np.linalg.eig(sum_alpha_XT_X)
+                
+                gamma_ = (np.sum((eig_val_sum_alpha_XT_X) /
+                          (lambda_ + eig_val_sum_alpha_XT_X)))
+                gamma_k = [(np.sum((alpha_[i] * eigen_vals_[i]) /
+                          (lambda_ + alpha_[i] * eigen_vals_[i]))) for i in range(N_alphas)]
+                lambda_ = ((gamma_ + 2 * lambda_1) /
+                           (np.sum(coef_ ** 2) + 2 * lambda_2))
+                alpha_ = [((n_samples[i] - gamma_k[i] + 2 * alpha_1) /
+                          (rmse_[i] + 2 * alpha_2)) for i in range(N_alphas)]
+
+                # Compute the objective function
+                if self.compute_score:
+                    if not multiple_alphas:
+                        s = lambda_1 * log(lambda_) - lambda_2 * lambda_
+                        s += alpha_1 * log(alpha_) - alpha_2 * alpha_
+                        s += 0.5 * (n_features * log(lambda_) +
+                                    n_samples * log(alpha_) -
+                                    alpha_ * rmse_ -
+                                    (lambda_ * np.sum(coef_ ** 2)) -
+                                    logdet_sigma_ -
+                                    n_samples * log(2 * np.pi))
+                    else:
+                        s = lambda_1 * log(lambda_) - lambda_2 * lambda_
+                        for i in range(N_alphas):
+                            s += alpha_1 * log(alpha_[i]) - alpha_2 * alpha_[i]
+                        s += 0.5 * (n_features * log(lambda_) +
+                                    sum([n_samples[i] * log(alpha_[i]) -
+                                    alpha_[i] * rmse_[i] for i in range(N_alphas)]) -
+                                    (lambda_ * np.sum(coef_ ** 2)) -
+                                    logdet_sigma_ -
+                                    n_samples * log(2 * np.pi))
+                    self.scores_.append(s)
+
+            # Check for convergence
+            if iter_ != 0 and np.sum(np.abs(coef_old_ - coef_)) < self.tol:
+                if verbose:
+                    print("Convergence after ", str(iter_), " iterations")
+                break
+            coef_old_ = np.copy(coef_)
+
+        self.coef_ = coef_
+        if not multiple_alphas:
+            sigma_ = np.dot(Vh.T,
+                            Vh / (eigen_vals_ + lambda_ / alpha_)[:, np.newaxis])
+            self.sigma_ = (1. / alpha_) * sigma_
+        else:
+            sigma_ = [np.dot(Vh[i].T,
+                            Vh[i] / (eigen_vals_[i] + lambda_ / alpha_[i])[:, np.newaxis]) for i in range(N_alphas)]
+            self.sigma_ = sum([(1. / alpha_[i]) * sigma_[i] for i in range(N_alphas)])
+        
+        
+        self._set_intercept(X_offset_, y_offset_, X_scale_)
+        return self
+    
+    def _set_intercept(self, X_offset, y_offset, X_scale):
+        """Set the intercept_
+        """
+        if isinstance(self.alpha_,list):
+            if self.fit_intercept:
+                self.coef_ = self.coef_ #/ X_scale
+                self.intercept_ = [0 for v in range(len(self.alpha_))]
+            else:
+                self.intercept_ = 0.
+        else:
+            if self.fit_intercept:
+                self.coef_ = self.coef_ / X_scale
+                self.intercept_ = y_offset - np.dot(X_offset, self.coef_.T)
+            else:
+                self.intercept_ = 0.
+    
+    def _decision_function(self, X):
+        utils.validation.check_is_fitted(self, "coef_")
+        
+        if isinstance(self.alpha_,list):
+            N = len(self.alpha_)
+            X = [utils.check_array(X[i], accept_sparse=['csr', 'csc', 'coo']) for i in range(N)]
+            return [utils.extmath.safe_sparse_dot(X[i], self.coef_.T,
+                                   dense_output=True) for i in range(N)]
+        else:
+            X = utils.check_array(X, accept_sparse=['csr', 'csc', 'coo'])
+            return utils.extmath.safe_sparse_dot(X, self.coef_.T,
+                                   dense_output=True) + self.intercept_
+
+    def predict(self, X, return_std=False):
+        """Predict using the linear model.
+
+        In addition to the mean of the predictive distribution, also its
+        standard deviation can be returned.
+
+        Parameters
+        ----------
+        X : {array-like, sparse matrix}, shape = (n_samples, n_features)
+            Samples.
+
+        return_std : boolean, optional
+            Whether to return the standard deviation of posterior prediction.
+
+        Returns
+        -------
+        y_mean : array, shape = (n_samples,)
+            Mean of predictive distribution of query points.
+
+        y_std : array, shape = (n_samples,)
+            Standard deviation of predictive distribution of query points.
+        """
+        multiple_alphas = isinstance(self.alpha_,list)
+        if multiple_alphas:
+            N = len(self.alpha_)
+            assert (isinstance(X,list) and len(X)==len(self.alpha_)) and all([isinstance(_x,np.ndarray) for _x in X]),\
+                "Since 'alpha_' is a list, X needs to be a list of the same length containing numpy arrays."
+        
+        y_mean = self._decision_function(X)
+        if return_std is False:
+            return y_mean
+        else:
+            if self.normalize:
+                if not multiple_alphas:
+                    X = (X - self.X_offset_) / self.X_scale_
+            
+            if not multiple_alphas:
+                sigmas_squared_data = (np.dot(X, self.sigma_) * X).sum(axis=1)
+                y_std = np.sqrt(sigmas_squared_data + (1. / self.alpha_))
+            else:
+                sigmas_squared_data = [(np.dot(X[i], self.sigma_) * X[i]).sum(axis=1) \
+                                       for i in range(N)]
+                y_std = [np.sqrt(sigmas_squared_data[i] + (1. / self.alpha_[i])) \
+                         for i in range(N)]
+            return y_mean, y_std
+
 def distribution_wrapper(dis,size=None,single=True):
     """Wraps scipy.stats distributions for RVM initialization.
 

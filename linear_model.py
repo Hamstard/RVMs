@@ -957,7 +957,7 @@ class BayesianRidge(linear_model.base.LinearModel, sklearn.base.RegressorMixin):
         self.verbose = verbose
         
         # modification
-        implemented_kinds = ["sk","naiv"]
+        implemented_kinds = ["sk","naive"]
         assert kind in implemented_kinds, "Given 'kind' parameter (%s) not recognized! Implemented kinds: %s" % (kind,implemented_kinds)
         self.kind = kind
 
@@ -1060,32 +1060,6 @@ class BayesianRidge(linear_model.base.LinearModel, sklearn.base.RegressorMixin):
             # coef_ = sigma_^-1 * XT * y
             if not multiple_alphas:
                 if self.kind == "sk":
-                    if n_samples > n_features:
-                        coef_ = np.dot(Vh.T,
-                                       Vh / (eigen_vals_ +
-                                             lambda_ / alpha_)[:, np.newaxis])
-                        coef_ = np.dot(coef_, XT_y)
-                        if self.compute_score:
-                            logdet_sigma_ = - np.sum(
-                                np.log(lambda_ + alpha_ * eigen_vals_))
-                    else:
-                        coef_ = np.dot(X.T, np.dot(
-                            U / (eigen_vals_ + lambda_ / alpha_)[None, :], U.T))
-                        coef_ = np.dot(coef_, y)
-                        if self.compute_score:
-                            logdet_sigma_ = lambda_ * np.ones(n_features)
-                            logdet_sigma_[:n_samples] += alpha_ * eigen_vals_
-                            logdet_sigma_ = - np.sum(np.log(logdet_sigma_))
-
-                elif self.kind == "naiv":
-                    sigma_inv_ = alpha_ * XT_X + lambda_ * np.eye(n_features)
-                    sigma_ = np.linalg.inv(sigma_inv_)
-                    coef_ = sigma_.dot(alpha_*XT_y)
-                    if self.compute_score:
-                        logdet_sigma = - np.sum(np.log(sigma_))
-            else:
-                if self.kind == "sk":
-                    raise NotImplementedError
                     if N_g_M:
                         coef_ = np.dot(Vh.T,
                                        Vh / (eigen_vals_ +
@@ -1103,17 +1077,53 @@ class BayesianRidge(linear_model.base.LinearModel, sklearn.base.RegressorMixin):
                             logdet_sigma_[:n_samples] += alpha_ * eigen_vals_
                             logdet_sigma_ = - np.sum(np.log(logdet_sigma_))
 
-                elif self.kind == "naiv":
-                    alpha_XT_X = alpha_[0] * XT_X[0]
-                    alpha_XT_y = alpha_[0]*XT_y[0]
-                    for i in range(1,N_alphas):
-                        alpha_XT_X += alpha_[i] * XT_X[i]
-                        alpha_XT_y += alpha_[i]*XT_y[i]
+                elif self.kind == "naive":
+                    sigma_inv_ = alpha_ * XT_X + lambda_ * np.eye(n_features)
+                    sigma_ = np.linalg.inv(sigma_inv_)
+                    coef_ = sigma_.dot(alpha_*XT_y)
+                    if self.compute_score:
+                        logdet_sigma = - np.sum(np.log(sigma_))
+            else:
+                if self.kind == "sk":
+                    
+                    if N_g_M:
+                        #coef_ = [np.dot(Vh[i].T,
+                        #               Vh[i] / (alpha_[i]*eigen_vals_[i] +
+                        #                     lambda_ )[:, np.newaxis]) for i in range(N_alphas)]
+                        coef_ = [np.dot(Vh[i].T, (alpha_[i]*eigen_vals_[i]) * Vh[i]) \
+                                 for i in range(N_alphas)]
+                        coef_ = np.linalg.inv(sum(coef_) + lambda_*np.eye(n_features))
+                                                                     
+                        XT_y_ = sum([XT_y[i]*alpha_[i] for i in range(N_alphas)])
+                        coef_ = np.dot(coef_, XT_y_)
+                        
+                        if self.compute_score:
+                            logdet_sigma_ = - np.sum(
+                                np.log(lambda_ + sum([alpha_[i] * eigen_vals_[i] for i in range(N_alphas)])))
+                    else:
+                        raise NotImplementedError
+                        coef_ = [np.dot(X[i].T, np.dot(
+                            U[i] / (eigen_vals_[i]*alpha_[i] + lambda_ )[None, :], U[i].T))
+                                 for i in range(N_alphas)]
+                        y_ = [y[i]*alpha_[i] for i in range(N_alphas)]
+                        coef_ = np.dot(sum(coef_), sum(y))
+                        if self.compute_score:
+                            logdet_sigma_ = lambda_ * np.ones(n_features)
+                            logdet_sigma_[:n_samples] += sum(alpha_ * eigen_vals_)
+                            logdet_sigma_ = - np.sum(np.log(logdet_sigma_))
+
+                elif self.kind == "naive":
+                    alpha_XT_X = sum([alpha_[i] * XT_X[i] for i in range(N_alphas)])
+                    alpha_XT_y = sum([alpha_[i] * XT_y[i] for i in range(N_alphas)])
+                    
                     sigma_inv_ = alpha_XT_X + lambda_ * np.eye(n_features)
                     sigma_ = np.linalg.inv(sigma_inv_)
                     coef_ = sigma_.dot(alpha_XT_y)
                     if self.compute_score:
                         logdet_sigma = - np.sum(np.log(sigma_))
+            
+            if iscomplex(coef_):
+                raise ValueError("Found complex model parameters! coef_ =",coef_)
             
             # Preserve the alpha and lambda values that were used to
             # calculate the final coefficients
@@ -1192,14 +1202,28 @@ class BayesianRidge(linear_model.base.LinearModel, sklearn.base.RegressorMixin):
 
         self.coef_ = coef_
         if not multiple_alphas:
-            sigma_ = np.dot(Vh.T,
-                            Vh / (eigen_vals_ + lambda_ / alpha_)[:, np.newaxis])
-            self.sigma_ = (1. / alpha_) * sigma_
-        else:
-            sigma_ = [np.dot(Vh[i].T,
-                            Vh[i] / (eigen_vals_[i] + lambda_ / alpha_[i])[:, np.newaxis]) for i in range(N_alphas)]
-            self.sigma_ = sum([(1. / alpha_[i]) * sigma_[i] for i in range(N_alphas)])
+            if self.kind == "sk":
+                sigma_ = np.dot(Vh.T,
+                                Vh / (eigen_vals_ + lambda_ / alpha_)[:, np.newaxis])
+                sigma_ /= alpha_
+                
+            elif self.kind == "naive":
+                sigma_inv_ = alpha_ * XT_X + lambda_ * np.eye(n_features)
+                sigma_ = np.linalg.inv(sigma_inv_)
+                
+            self.sigma_ = sigma_
         
+        else:  
+            if self.kind == "sk":
+                sigma_ = sum([np.dot(Vh[i].T,
+                                Vh[i] * (eigen_vals_[i]*alpha_[i])) for i in range(N_alphas)])
+                sigma_ = np.linalg.inv(sigma_ + lambda_*np.eye(n_features))
+                
+            elif self.kind == "naive":
+                sigma_inv_ = sum([alpha_[i] * XT_X[i] for i in range(N_alphas)])
+                sigma_ = np.linalg.inv(sigma_inv_ + lambda_ * np.eye(n_features))
+            
+            self.sigma_ = sigma_
         
         self._set_intercept(X_offset_, y_offset_, X_scale_)
         return self
@@ -1259,7 +1283,7 @@ class BayesianRidge(linear_model.base.LinearModel, sklearn.base.RegressorMixin):
         if multiple_alphas:
             N = len(self.alpha_)
             assert (isinstance(X,list) and len(X)==len(self.alpha_)) and all([isinstance(_x,np.ndarray) for _x in X]),\
-                "Since 'alpha_' is a list, X needs to be a list of the same length containing numpy arrays."
+                "'alpha_' is a list, hence X needs to be a list of the same length containing numpy arrays."
         
         y_mean = self._decision_function(X)
         if return_std is False:

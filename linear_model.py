@@ -1433,7 +1433,7 @@ class LinearRegression(sk_linear_model.base.LinearModel, sklearn.base.RegressorM
         # if sample_weight is not None:
         #     # Sample weight can be implemented via a simple rescaling.
         #     X, y = _rescale_data(X, y, sample_weight)
-
+        import scipy.sparse as sp
         if not isinstance(X,list) and sp.issparse(X):
             if y.ndim < 2:
                 out = sparse_lsqr(X, y)

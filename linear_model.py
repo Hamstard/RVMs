@@ -1303,6 +1303,264 @@ class BayesianRidge(linear_model.base.LinearModel, sklearn.base.RegressorMixin):
                          for i in range(N)]
             return y_mean, y_std
 
+class LinearRegression(sk_linear_model.base.LinearModel, sklearn.base.RegressorMixin):
+    """
+    Ordinary least squares Linear Regression.
+
+    Parameters
+    ----------
+    fit_intercept : boolean, optional, default True
+        whether to calculate the intercept for this model. If set
+        to False, no intercept will be used in calculations
+        (e.g. data is expected to be already centered).
+
+    normalize : boolean, optional, default False
+        This parameter is ignored when ``fit_intercept`` is set to False.
+        If True, the regressors X will be normalized before regression by
+        subtracting the mean and dividing by the l2-norm.
+        If you wish to standardize, please use
+        :class:`sklearn.preprocessing.StandardScaler` before calling ``fit`` on
+        an estimator with ``normalize=False``.
+
+    copy_X : boolean, optional, default True
+        If True, X will be copied; else, it may be overwritten.
+
+    n_jobs : int, optional, default 1
+        The number of jobs to use for the computation.
+        If -1 all CPUs are used. This will only provide speedup for
+        n_targets > 1 and sufficient large problems.
+
+    Attributes
+    ----------
+    coef_ : array, shape (n_features, ) or (n_targets, n_features)
+        Estimated coefficients for the linear regression problem.
+        If multiple targets are passed during the fit (y 2D), this
+        is a 2D array of shape (n_targets, n_features), while if only
+        one target is passed, this is a 1D array of length n_features.
+
+    intercept_ : array
+        Independent term in the linear model.
+
+    Notes
+    -----
+    From the implementation point of view, this is just plain Ordinary
+    Least Squares (scipy.linalg.lstsq) wrapped as a predictor object.
+
+    """
+
+    def __init__(self, fit_intercept=True, normalize=False, copy_X=True,
+                 n_jobs=1, kind="svd"):
+        self.fit_intercept = fit_intercept
+        self.normalize = normalize
+        self.copy_X = copy_X
+        self.n_jobs = n_jobs
+        
+        implemented_kinds = ["svd","naive"]
+        assert kind in implemented_kinds, "Given 'kind' parameter (%s) not recognized! Implemented kinds: %s" % (kind,implemented_kinds)
+        self.kind = kind
+
+    def fit(self, X, y, sample_weight=None):
+        """
+        Fit linear model.
+
+        Parameters
+        ----------
+        X : numpy array or sparse matrix of shape [n_samples,n_features]
+            Training data
+
+        y : numpy array of shape [n_samples, n_targets]
+            Target values. Will be cast to X's dtype if necessary
+
+        sample_weight : numpy array of shape [n_samples]
+            Individual weights for each sample
+
+            .. versionadded:: 0.17
+               parameter *sample_weight* support to LinearRegression.
+
+        Returns
+        -------
+        self : returns an instance of self.
+        """
+        
+        if all([isinstance(X,np.ndarray), isinstance(y,np.ndarray)]):
+            multiple_alphas = False
+        elif all([isinstance(X,list), isinstance(y,list)]):
+            assert len(X) == len(y), "The length of X (%i) and y (%i) have to be identical!" % (len(X), len(y))
+            assert len(set([_x.shape[1] for _x in X]))==1, "The number of features has to be the same for all X!"
+            N_alphas = len(X)
+            self.N_alphas = N_alphas
+            if all([isinstance(_x, np.ndarray) for _x in X]) and all([isinstance(_y, np.ndarray) for _y in y]):
+                for i in range(N_alphas):
+                    assert len(X[i])==len(y[i]), "The number of entries in X[%i] (%i) and y[%i] (%i) has to be equal!" % (len(X[i]), len(y[i]))
+                multiple_alphas = True
+            else:
+                raise ValueError("X (%s) and y (%s) both have to contain only np.ndarrays!" %([type(_x) for _x in X], [type(_y) for _y in y]))
+        else:
+            raise ValueError("X (%s) and y (%s) both need to be either numpy arrays of lists or numpy arrays!" %(type(X),type(y)))
+        self.multiple_alphas = multiple_alphas
+        
+        n_jobs_ = self.n_jobs
+        if not multiple_alphas:
+            X, y = utils.check_X_y(X, y, dtype=np.float64, y_numeric=True)
+            X, y, X_offset_, y_offset_, X_scale_ = self._preprocess_data(
+                X, y, self.fit_intercept, self.normalize, self.copy_X)
+            self.X_offset_ = X_offset_
+            self.X_scale_ = X_scale_
+            n_samples, n_features = X.shape
+        else:
+            X_offset_, y_offset_, X_scale_ = [None for v in range(N_alphas)],\
+                                            [None for v in range(N_alphas)],\
+                                            [None for v in range(N_alphas)]
+            n_samples = [None for v in range(N_alphas)]
+            
+            for i in range(N_alphas):
+                X[i], y[i] = utils.check_X_y(X[i], y[i], dtype=np.float64, y_numeric=True)
+                X[i], y[i], X_offset_[i], y_offset_[i], X_scale_[i] = self._preprocess_data(
+                    X[i], y[i], self.fit_intercept, self.normalize, self.copy_X)
+                n_samples[i], n_features = X[i].shape
+            self.X_offset_ = X_offset_
+            self.X_scale_ = X_scale_
+        # X, y = check_X_y(X, y, accept_sparse=['csr', 'csc', 'coo'],
+        #                  y_numeric=True, multi_output=True)
+
+        if sample_weight is not None and np.atleast_1d(sample_weight).ndim > 1:
+            raise ValueError("Sample weights must be 1D array or scalar")
+
+        # X, y, X_offset, y_offset, X_scale = self._preprocess_data(
+        #     X, y, fit_intercept=self.fit_intercept, normalize=self.normalize,
+        #     copy=self.copy_X, sample_weight=sample_weight)
+
+        # if sample_weight is not None:
+        #     # Sample weight can be implemented via a simple rescaling.
+        #     X, y = _rescale_data(X, y, sample_weight)
+
+        if not isinstance(X,list) and sp.issparse(X):
+            if y.ndim < 2:
+                out = sparse_lsqr(X, y)
+                self.coef_ = out[0]
+                self._residues = out[3]
+            else:
+                # sparse_lstsq cannot handle y with shape (M, K)
+                outs = Parallel(n_jobs=n_jobs_)(
+                    delayed(sparse_lsqr)(X, y[:, j].ravel())
+                    for j in range(y.shape[1]))
+                self.coef_ = np.vstack(out[0] for out in outs)
+                self._residues = np.vstack(out[3] for out in outs)
+        else:
+            if multiple_alphas:
+                
+                XT_y = [None for v in range(N_alphas)]
+                U = [None for v in range(N_alphas)]
+                S = [None for v in range(N_alphas)]
+                Vh = [None for v in range(N_alphas)]
+                eigen_vals_ = [None for v in range(N_alphas)]
+                XT_X = [None for v in range(N_alphas)]
+
+                for i in range(N_alphas):
+                    XT_y[i] = np.dot(X[i].T, y[i])
+                    U[i], S[i], Vh[i] = linalg.svd(X[i], full_matrices=False)
+                    eigen_vals_[i] = S[i] ** 2
+
+                    XT_X[i] = X[i].T.dot(X[i])
+                    
+                # more samples than features?
+                N_g_M = n_samples > n_features if not multiple_alphas else all([n_samples[i]>n_features for i in range(N_alphas)])
+                
+                if self.kind == "svd":
+                    if N_g_M:
+                        #coef_ = [np.dot(Vh[i].T,
+                        #               Vh[i] / (alpha_[i]*eigen_vals_[i] +
+                        #                     lambda_ )[:, np.newaxis]) for i in range(N_alphas)]
+                        coef_ = [np.dot(Vh[i].T, eigen_vals_[i] * Vh[i]) \
+                                 for i in range(N_alphas)]
+                        coef_ = np.linalg.inv(sum(coef_))
+
+                        XT_y_ = sum(XT_y)
+                        coef_ = np.dot(coef_, XT_y_)
+                        self._residues = [y[i]-X[i].dot(coef_) for i in range(N_alphas)]
+                        self.rank_ = [np.linalg.matrix_rank(X[i]) for i in range(N_alphas)]
+                        self.singular = S
+
+                    else:
+                        raise NotImplementedError
+                elif self.kind == "naive":
+                    coef_ = [np.dot(X[i].T, X[i]) \
+                             for i in range(N_alphas)]
+                    coef_ = np.linalg.inv(sum(coef_))
+
+                    XT_y_ = sum(XT_y)
+                    coef_ = np.dot(coef_, XT_y_)
+                    self._residues = [y[i]-X[i].dot(coef_) for i in range(N_alphas)]
+                    self.rank_ = [np.linalg.matrix_rank(X[i]) for i in range(N_alphas)]
+                    self.singular = S
+                
+            else:
+                coef_, self._residues, self.rank_, self.singular_ = \
+                    linalg.lstsq(X, y)
+                coef_ = coef_.T
+            self.coef_ = coef_
+
+        if not isinstance(X,list) and y.ndim == 1:
+            self.coef_ = np.ravel(self.coef_)
+        self._set_intercept(X_offset_, y_offset_, X_scale_)
+        return self
+    
+    def _set_intercept(self, X_offset, y_offset, X_scale):
+        """Set the intercept_
+        """
+        if self.multiple_alphas:
+            if self.fit_intercept:
+                self.coef_ = self.coef_ #/ X_scale
+                self.intercept_ = [0 for v in range(self.N_alphas)]
+            else:
+                self.intercept_ = 0.
+        else:
+            if self.fit_intercept:
+                self.coef_ = self.coef_ / X_scale
+                self.intercept_ = y_offset - np.dot(X_offset, self.coef_.T)
+            else:
+                self.intercept_ = 0.
+                
+    def _decision_function(self, X):
+        utils.validation.check_is_fitted(self, "coef_")
+        
+        if self.multiple_alphas:
+            N = self.N_alphas
+            X = [utils.check_array(X[i], accept_sparse=['csr', 'csc', 'coo']) for i in range(N)]
+            return [utils.extmath.safe_sparse_dot(X[i], self.coef_.T,
+                                   dense_output=True) for i in range(N)]
+        else:
+            X = utils.check_array(X, accept_sparse=['csr', 'csc', 'coo'])
+            return utils.extmath.safe_sparse_dot(X, self.coef_.T,
+                                   dense_output=True) + self.intercept_
+                
+    def predict(self, X, return_std=False):
+        """Predict using the linear model.
+
+        In addition to the mean of the predictive distribution, also its
+        standard deviation can be returned.
+
+        Parameters
+        ----------
+        X : {array-like, sparse matrix}, shape = (n_samples, n_features)
+            Samples.
+
+        return_std : boolean, optional
+            Whether to return the standard deviation of posterior prediction.
+
+        Returns
+        -------
+        y_mean : array, shape = (n_samples,)
+            Mean of predictive distribution of query points.
+        """
+        
+        if self.multiple_alphas:
+            N = self.N_alphas
+            assert (isinstance(X,list) and len(X)==N) and all([isinstance(_x,np.ndarray) for _x in X]),\
+                "'alpha_' is a list, hence X needs to be a list of the same length containing numpy arrays."
+        
+        return self._decision_function(X)
+
 def distribution_wrapper(dis,size=None,single=True):
     """Wraps scipy.stats distributions for RVM initialization.
 

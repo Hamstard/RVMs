@@ -1303,7 +1303,7 @@ class BayesianRidge(linear_model.base.LinearModel, sklearn.base.RegressorMixin):
                          for i in range(N)]
             return y_mean, y_std
 
-class LinearRegression(sk_linear_model.base.LinearModel, sklearn.base.RegressorMixin):
+class LinearRegression(linear_model.base.LinearModel, sklearn.base.RegressorMixin):
     """
     Ordinary least squares Linear Regression.
 
